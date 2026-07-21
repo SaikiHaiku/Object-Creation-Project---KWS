@@ -10,8 +10,16 @@ Logiciel de creation d'objets 3D et 2D avec edition manuelle et generation par I
 - **Materiaux**: Materiaux PBR avec metallic, roughness, shininess
 - **16 Scenes IA**: Maison, robot, chateau, vaisseau, arbre, epee, et plus
 
+## Telechargement
+
+**[Télécharger OCP.exe (v1.0)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v1.0/OCP.exe)** — Exécutable Windows, pas besoin d'installer Python.
+
 ## Demarrage Rapide
 
+### Depuis l'exécutable
+Télécharger `OCP.exe` ci-dessus et double-cliquer pour lancer.
+
+### Depuis la source
 ```bash
 pip install -r requirements.txt
 python main.py
