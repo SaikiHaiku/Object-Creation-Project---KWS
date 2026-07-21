@@ -12,31 +12,42 @@ Logiciel de creation d'objets 3D et 2D avec edition manuelle et generation par I
 
 ## Telechargement
 
-**[Télécharger OCP.exe (v1.0)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v1.0/OCP.exe)** — Exécutable Windows, pas besoin d'installer Python.
+### Recommande — C++ (v2.0)
+**[Télécharger OCP v2.0 (C++)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.0/OCP-v2.0-CPP.zip)** — Exécutable Windows natif, 3 Mo, rapide. Extraire le zip et lancer `OCP.exe`.
+
+### Python (v1.0)
+**[Télécharger OCP.exe (v1.0 Python)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v1.0/OCP.exe)** — Exécutable Windows, pas besoin d'installer Python.
 
 ## Demarrage Rapide
 
-### Depuis l'exécutable
-Télécharger `OCP.exe` ci-dessus et double-cliquer pour lancer.
+### Depuis l'exécutable (v2.0)
+1. Télécharger `OCP-v2.0-CPP.zip` ci-dessus
+2. Extraire le zip
+3. Copier `libwinpthread-1.dll` dans le même dossier que `OCP.exe` (déjà inclus)
+4. Double-cliquer sur `OCP.exe`
 
-### Depuis la source
+### Depuis la source (Python)
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-## Installation
-
-Voir `website/index.html` pour le guide d'installation detaille.
-
-## Build Executable
-
+### Depuis la source (C++)
 ```bash
-python build.py
+# Nécessite MinGW-w64 (MSVCRT)
+python cpp/build.py
 ```
 
 ## Stack Technique
 
+### v2.0 (C++) — Recommande
+- C++17 / MinGW-w64
+- OpenGL 3.3 + Dear ImGui
+- GLFW 3.4
+- GLM (math)
+- GLAD (OpenGL loader)
+
+### v1.0 (Python)
 - Python 3.10+
 - PyQt6 (Interface)
 - PyOpenGL (Rendu 3D)
