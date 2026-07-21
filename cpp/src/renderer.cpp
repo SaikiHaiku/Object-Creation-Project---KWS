@@ -2,6 +2,12 @@
 #include <glad/gl.h>
 #include <cstdio>
 #include <cstring>
+#include <cmath>
+#include <vector>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 namespace ocp {
 
@@ -109,21 +115,36 @@ uint32_t Renderer::compile_shader(const char* vs_src, const char* fs_src) {
         glShaderSource(s, 1, &src, nullptr);
         glCompileShader(s);
         int ok; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-        if (!ok) { char log[512]; glGetShaderInfoLog(s, 512, nullptr, log); fprintf(stderr, "Shader error: %s\n", log); }
+        if (!ok) {
+            char log[1024]; glGetShaderInfoLog(s, sizeof(log), nullptr, log);
+            fprintf(stderr, "Shader compile error: %s\n", log);
+            glDeleteShader(s);
+            return 0;
+        }
         return s;
     };
     uint32_t vs = compile(GL_VERTEX_SHADER, vs_src);
     uint32_t fs = compile(GL_FRAGMENT_SHADER, fs_src);
+    if (!vs || !fs) {
+        if (vs) glDeleteShader(vs);
+        if (fs) glDeleteShader(fs);
+        return 0;
+    }
     uint32_t prog = glCreateProgram();
     glAttachShader(prog, vs); glAttachShader(prog, fs);
     glLinkProgram(prog);
     int ok; glGetProgramiv(prog, GL_LINK_STATUS, &ok);
-    if (!ok) { char log[512]; glGetProgramInfoLog(prog, 512, nullptr, log); fprintf(stderr, "Link error: %s\n", log); }
+    if (!ok) {
+        char log[1024]; glGetProgramInfoLog(prog, sizeof(log), nullptr, log);
+        fprintf(stderr, "Shader link error: %s\n", log);
+        glDeleteProgram(prog);
+        prog = 0;
+    }
     glDeleteShader(vs); glDeleteShader(fs);
     return prog;
 }
 
-void Renderer::use_shader(uint32_t s) { glUseProgram(s); }
+void Renderer::use_shader(uint32_t s) { if (s) glUseProgram(s); }
 
 void Renderer::set_mat4(uint32_t s, const char* n, const mat4& m) {
     GLint loc = glGetUniformLocation(s, n); if (loc >= 0) glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(m));
@@ -155,6 +176,20 @@ void Renderer::initialize(int w, int h) {
     shader_line = compile_shader(VERT_LINE, FRAG_LINE);
     shader_grid = compile_shader(VERT_GRID, FRAG_GRID);
     build_grid(20.0f, 20);
+    init_selection_buffers();
+    init_gizmo_buffers();
+}
+
+void Renderer::init_selection_buffers() {
+    glGenVertexArrays(1, &sel_vao);
+    glGenBuffers(1, &sel_vbo);
+    sel_vertex_count = 0;
+}
+
+void Renderer::init_gizmo_buffers() {
+    glGenVertexArrays(1, &gizmo_vao);
+    glGenBuffers(1, &gizmo_vbo);
+    gizmo_vertex_count = 0;
 }
 
 void Renderer::build_grid(float size, int subdiv) {
@@ -194,8 +229,7 @@ void Renderer::render_grid(float size, int subdivs, const mat4& view, const mat4
 }
 
 Renderer::MeshBuffers Renderer::get_or_create_buffers(Mesh* mesh) {
-    uint32_t key = (uint32_t)(uintptr_t)mesh;
-    auto it = mesh_cache.find(key);
+    auto it = mesh_cache.find(mesh);
     if (it != mesh_cache.end() && !mesh->dirty) return it->second;
     if (it != mesh_cache.end()) {
         glDeleteBuffers(1, &it->second.vbo);
@@ -207,6 +241,7 @@ Renderer::MeshBuffers Renderer::get_or_create_buffers(Mesh* mesh) {
     const uint32_t* id = mesh->get_index_data();
     int vc = mesh->get_vertex_count();
     int ic = mesh->get_index_count();
+    if (vc == 0 || ic == 0) return mb;
     glGenVertexArrays(1, &mb.vao);
     glGenBuffers(1, &mb.vbo);
     glGenBuffers(1, &mb.ebo);
@@ -225,17 +260,17 @@ Renderer::MeshBuffers Renderer::get_or_create_buffers(Mesh* mesh) {
     glEnableVertexAttribArray(3);
     glBindVertexArray(0);
     mb.index_count = ic;
-    mesh_cache[key] = mb;
+    mesh_cache[mesh] = mb;
     mesh->dirty = false;
     return mb;
 }
 
 void Renderer::render_node(SceneNode* node, uint32_t shader, const mat4& view, const mat4& proj) {
-    if (!node->visible) return;
-    node->update_matrices(view != mat4(0) ? mat4(1) : mat4(1));
+    if (!node || !node->visible) return;
 
     if (node->mesh && node->material && node->mesh->get_vertex_count() > 0) {
-        MeshBuffers mb = get_or_create_buffers(node->mesh);
+        MeshBuffers mb = get_or_create_buffers(node->mesh.get());
+        if (mb.vao == 0) return;
         set_mat4(shader, "uModel", node->get_world_matrix());
         set_mat3(shader, "uNormalMatrix", mat3_normal_from_mat4(node->get_world_matrix()));
         Material& mat = *node->material;
@@ -254,13 +289,13 @@ void Renderer::render_node(SceneNode* node, uint32_t shader, const mat4& view, c
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glEnable(GL_CULL_FACE);
     }
-    for (auto* c : node->children) render_node(c, shader, view, proj);
+    for (auto& c : node->children) render_node(c.get(), shader, view, proj);
 }
 
 void Renderer::render_selection_box(SceneNode* node, const mat4& view, const mat4& proj) {
-    if (!node->mesh) return;
-    vec3 bmin = node->get_bounding_box_min() - vec3(0.02f);
-    vec3 bmax = node->get_bounding_box_max() + vec3(0.02f);
+    if (!node || !node->mesh) return;
+    vec3 bmin = node->get_bounding_box_min() - vec3(0.03f);
+    vec3 bmax = node->get_bounding_box_max() + vec3(0.03f);
     vec3 corners[8] = {
         {bmin.x,bmin.y,bmin.z},{bmax.x,bmin.y,bmin.z},{bmax.x,bmax.y,bmin.z},{bmin.x,bmax.y,bmin.z},
         {bmin.x,bmin.y,bmax.z},{bmax.x,bmin.y,bmax.z},{bmax.x,bmax.y,bmax.z},{bmin.x,bmax.y,bmax.z}
@@ -271,9 +306,9 @@ void Renderer::render_selection_box(SceneNode* node, const mat4& view, const mat
         vec3 p = corners[edges[i]];
         data.insert(data.end(), {p.x, p.y, p.z, 1.0f, 1.0f, 0.0f, 1.0f});
     }
-    uint32_t vao, vbo;
-    glGenVertexArrays(1, &vao); glGenBuffers(1, &vbo);
-    glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    sel_vertex_count = 24;
+    glBindVertexArray(sel_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, sel_vbo);
     glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_DYNAMIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
@@ -282,9 +317,90 @@ void Renderer::render_selection_box(SceneNode* node, const mat4& view, const mat
 
     use_shader(shader_line);
     set_mat4(shader_line, "uMVP", proj * view);
-    glDrawArrays(GL_LINES, 0, 24);
+    glDrawArrays(GL_LINES, 0, sel_vertex_count);
     glBindVertexArray(0);
-    glDeleteBuffers(1, &vbo); glDeleteVertexArrays(1, &vao);
+}
+
+void Renderer::render_gizmo(SceneNode* node, int tool, const mat4& view, const mat4& proj, const Camera& camera) {
+    if (!node) return;
+    vec3 center = node->get_world_position();
+    std::vector<float> data;
+    float len = 1.5f;
+
+    if (tool == 0) {
+        auto add_arrow = [&](const vec3& dir, const vec3& col) {
+            vec3 end = center + dir * len;
+            data.insert(data.end(), {center.x, center.y, center.z, col.r, col.g, col.b, 1.0f});
+            data.insert(data.end(), {end.x, end.y, end.z, col.r, col.g, col.b, 1.0f});
+            vec3 perp1 = fabsf(glm::dot(dir, vec3(0,1,0))) < 0.9f ? glm::normalize(glm::cross(dir, vec3(0,1,0))) : glm::normalize(glm::cross(dir, vec3(1,0,0)));
+            vec3 perp2 = glm::cross(dir, perp1);
+            float hs = 0.08f;
+            for (int i = 0; i < 4; i++) {
+                float a = (float)i * (float)M_PI * 0.5f;
+                vec3 offset = (perp1 * cosf(a) + perp2 * sinf(a)) * hs;
+                data.insert(data.end(), {end.x, end.y, end.z, col.r, col.g, col.b, 1.0f});
+                data.insert(data.end(), {(end + offset).x, (end + offset).y, (end + offset).z, col.r, col.g, col.b, 0.5f});
+            }
+        };
+        add_arrow(vec3(1,0,0), vec3(1,0,0));
+        add_arrow(vec3(0,1,0), vec3(0,1,0));
+        add_arrow(vec3(0,0,1), vec3(0,0,1));
+    } else if (tool == 1) {
+        auto add_ring = [&](const vec3& axis, const vec3& col) {
+            int segs = 32;
+            float radius = len * 0.8f;
+            vec3 perp1 = fabsf(glm::dot(axis, vec3(0,1,0))) < 0.9f ? glm::normalize(glm::cross(axis, vec3(0,1,0))) : glm::normalize(glm::cross(axis, vec3(1,0,0)));
+            vec3 perp2 = glm::cross(axis, perp1);
+            for (int i = 0; i < segs; i++) {
+                float a0 = (float)i / segs * 2.0f * (float)M_PI;
+                float a1 = (float)(i + 1) / segs * 2.0f * (float)M_PI;
+                vec3 p0 = center + (perp1 * cosf(a0) + perp2 * sinf(a0)) * radius;
+                vec3 p1 = center + (perp1 * cosf(a1) + perp2 * sinf(a1)) * radius;
+                data.insert(data.end(), {p0.x, p0.y, p0.z, col.r, col.g, col.b, 0.8f});
+                data.insert(data.end(), {p1.x, p1.y, p1.z, col.r, col.g, col.b, 0.8f});
+            }
+        };
+        add_ring(vec3(1,0,0), vec3(1,0.3f,0.3f));
+        add_ring(vec3(0,1,0), vec3(0.3f,1,0.3f));
+        add_ring(vec3(0,0,1), vec3(0.3f,0.3f,1));
+    } else if (tool == 2) {
+        auto add_scale_box = [&](const vec3& axis, const vec3& col) {
+            vec3 end = center + axis * len;
+            float hs = 0.06f;
+            vec3 perp1 = fabsf(glm::dot(axis, vec3(0,1,0))) < 0.9f ? glm::normalize(glm::cross(axis, vec3(0,1,0))) : glm::normalize(glm::cross(axis, vec3(1,0,0)));
+            vec3 perp2 = glm::cross(axis, perp1);
+            data.insert(data.end(), {center.x, center.y, center.z, col.r, col.g, col.b, 1.0f});
+            data.insert(data.end(), {end.x, end.y, end.z, col.r, col.g, col.b, 1.0f});
+            vec3 corners2[8];
+            for (int i = 0; i < 8; i++) {
+                corners2[i] = end + perp1 * ((i & 1) ? hs : -hs) + perp2 * ((i & 2) ? hs : -hs) + axis * ((i & 4) ? hs : -hs);
+            }
+            int edges2[] = {0,1,1,3,3,2,2,0,4,5,5,7,7,6,6,4,0,4,1,5,3,7,2,6};
+            for (int i = 0; i < 24; i++) {
+                data.insert(data.end(), {corners2[edges2[i]].x, corners2[edges2[i]].y, corners2[edges2[i]].z, col.r, col.g, col.b, 0.9f});
+            }
+        };
+        add_scale_box(vec3(1,0,0), vec3(1,0.3f,0.3f));
+        add_scale_box(vec3(0,1,0), vec3(0.3f,1,0.3f));
+        add_scale_box(vec3(0,0,1), vec3(0.3f,0.3f,1));
+    }
+
+    if (data.empty()) return;
+    gizmo_vertex_count = (int)data.size() / 7;
+    glBindVertexArray(gizmo_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, gizmo_vbo);
+    glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glDisable(GL_DEPTH_TEST);
+    use_shader(shader_line);
+    set_mat4(shader_line, "uMVP", proj * view);
+    glDrawArrays(GL_LINES, 0, gizmo_vertex_count);
+    glBindVertexArray(0);
+    glEnable(GL_DEPTH_TEST);
 }
 
 void Renderer::render_scene(Scene& scene, Camera& camera, int vp_x, int vp_y, int vp_w, int vp_h) {
@@ -317,7 +433,7 @@ void Renderer::render_scene(Scene& scene, Camera& camera, int vp_x, int vp_y, in
     }
     set_int(shader_3d, "uLightCount", light_count);
 
-    for (auto* c : scene.root.children) render_node(c, shader_3d, view, proj);
+    for (auto& c : scene.root.children) render_node(c.get(), shader_3d, view, proj);
 
     if (scene.selected_node) render_selection_box(scene.selected_node, view, proj);
 }
@@ -331,8 +447,7 @@ uint32_t Renderer::read_pixel(int x, int y) {
 void Renderer::resize(int w, int h) { glViewport(0, 0, w, h); }
 
 void Renderer::invalidate_mesh(Mesh* mesh) {
-    uint32_t key = (uint32_t)(uintptr_t)mesh;
-    auto it = mesh_cache.find(key);
+    auto it = mesh_cache.find(mesh);
     if (it != mesh_cache.end()) {
         glDeleteBuffers(1, &it->second.vbo);
         glDeleteBuffers(1, &it->second.ebo);
@@ -342,8 +457,12 @@ void Renderer::invalidate_mesh(Mesh* mesh) {
 }
 
 void Renderer::cleanup() {
-    glDeleteProgram(shader_3d); glDeleteProgram(shader_line); glDeleteProgram(shader_grid);
+    if (shader_3d) glDeleteProgram(shader_3d);
+    if (shader_line) glDeleteProgram(shader_line);
+    if (shader_grid) glDeleteProgram(shader_grid);
     glDeleteBuffers(1, &grid_vbo); glDeleteVertexArrays(1, &grid_vao);
+    glDeleteBuffers(1, &sel_vbo); glDeleteVertexArrays(1, &sel_vao);
+    glDeleteBuffers(1, &gizmo_vbo); glDeleteVertexArrays(1, &gizmo_vao);
     for (auto& [k, mb] : mesh_cache) {
         glDeleteBuffers(1, &mb.vbo); glDeleteBuffers(1, &mb.ebo); glDeleteVertexArrays(1, &mb.vao);
     }

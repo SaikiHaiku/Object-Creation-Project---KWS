@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <random>
 
 namespace ocp {
 
@@ -16,6 +17,7 @@ struct ParsedPrompt {
     int count = 1;
     std::string arrangement;
     std::vector<std::string> modifiers;
+    uint32_t seed = 0;
 };
 
 class PromptEngine {
@@ -34,6 +36,9 @@ public:
         vec3 rotation = vec3(0);
         vec3 scale = vec3(1);
     };
+
+    std::mt19937& rng();
+
     std::vector<Part> generate_tree(float height = 3.0f);
     std::vector<Part> generate_house(float size = 1.0f);
     std::vector<Part> generate_car(float size = 1.0f);
@@ -42,6 +47,7 @@ public:
     std::vector<Part> generate_spaceship(float size = 1.0f);
     std::vector<Part> generate_sword(float size = 1.0f);
     std::vector<Part> generate_chair(float size = 1.0f);
+    std::vector<Part> generate_table(float size = 1.0f);
     std::vector<Part> generate_star(float size = 1.0f);
     std::vector<Part> generate_heart(float size = 1.0f);
     std::vector<Part> generate_mountain(float size = 1.0f);
@@ -50,13 +56,38 @@ public:
     std::vector<Part> generate_spiral(float size = 1.0f);
     std::vector<Part> generate_dna(float size = 1.0f);
     std::vector<Part> generate_skull(float size = 1.0f);
+    std::vector<Part> generate_airplane(float size = 1.0f);
+    std::vector<Part> generate_boat(float size = 1.0f);
+    std::vector<Part> generate_door(float size = 1.0f);
+    std::vector<Part> generate_window(float size = 1.0f);
+    std::vector<Part> generate_shelf(float size = 1.0f);
+    std::vector<Part> generate_lamp(float size = 1.0f);
+    std::vector<Part> generate_brain(float size = 1.0f);
+    std::vector<Part> generate_flower(float size = 1.0f);
+    std::vector<Part> generate_bone(float size = 1.0f);
+    std::vector<Part> generate_key(float size = 1.0f);
+    std::vector<Part> generate_helmet(float size = 1.0f);
+    std::vector<Part> generate_battery(float size = 1.0f);
+    std::vector<Part> generate_ice_crystal(float size = 1.0f);
+    std::vector<Part> generate_mushroom(float size = 1.0f);
+    std::vector<Part> generate_pyramid(float size = 1.0f);
+    std::vector<Part> generate_donut(float size = 1.0f);
+    std::vector<Part> generate_satellite(float size = 1.0f);
+    std::vector<Part> generate_jewelry(float size = 1.0f);
 
 private:
+    std::mt19937 rng_engine{42};
+
     Mesh create_tapered_cylinder(float r_top, float r_bot, float height, int seg = 16);
-    Mesh create_pyramid(float base_size, float height, int sides = 4);
+    Mesh create_pyramid_mesh(float base_size, float height, int sides = 4);
     Mesh create_deformed_sphere(float radius, int seg = 24, int rings = 16, float deform = 0.3f);
     Mesh create_star_mesh(float size);
     Mesh create_heart_mesh(float size);
+    Mesh create_skull_mesh(float size);
+    Mesh create_brain_mesh(float size);
+    Mesh create_helmet_mesh(float size);
+    Mesh create_l_shape(float leg1, float leg2, float thickness);
+    Mesh create_ring(float outer_r, float inner_r, int segs);
 };
 
 class ObjectGenerator {

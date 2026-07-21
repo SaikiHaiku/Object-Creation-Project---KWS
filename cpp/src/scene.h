@@ -4,6 +4,9 @@
 #include "camera.h"
 #include <vector>
 #include <functional>
+#include <memory>
+#include <unordered_set>
+#include <stack>
 
 namespace ocp {
 
@@ -11,18 +14,25 @@ class SceneNode {
 public:
     std::string name;
     SceneNode* parent = nullptr;
-    std::vector<SceneNode*> children;
+    std::vector<std::unique_ptr<SceneNode>> children;
 
     vec3 position = vec3(0);
-    vec3 rotation = vec3(0); // Euler degrees
+    vec3 rotation = vec3(0);
     vec3 scale = vec3(1);
     bool visible = true;
     bool locked = false;
 
-    Mesh* mesh = nullptr;
-    Material* material = nullptr;
+    std::unique_ptr<Mesh> mesh;
+    std::unique_ptr<Material> material;
 
-    void add_child(SceneNode* child);
+    SceneNode() = default;
+    ~SceneNode() = default;
+    SceneNode(const SceneNode&) = delete;
+    SceneNode& operator=(const SceneNode&) = delete;
+    SceneNode(SceneNode&&) = default;
+    SceneNode& operator=(SceneNode&&) = default;
+
+    SceneNode* add_child(std::unique_ptr<SceneNode> child);
     void remove_child(SceneNode* child);
     void update_matrices(const mat4& parent_world = mat4(1.0f));
 
@@ -37,8 +47,10 @@ public:
     vec3 get_bounding_box_min() const;
     vec3 get_bounding_box_max() const;
 
-    SceneNode* clone_recursive() const;
+    std::unique_ptr<SceneNode> clone_recursive() const;
     void delete_children();
+
+    SceneNode* find_child(const std::string& name) const;
 
 private:
     mat4 local_matrix = mat4(1.0f);
@@ -52,6 +64,7 @@ public:
     std::vector<Camera> cameras;
     std::vector<Light> lights;
     SceneNode* selected_node = nullptr;
+    std::vector<SceneNode*> multi_selection;
     vec4 background_color = vec4(0.15f, 0.15f, 0.2f, 1.0f);
     bool grid_enabled = true;
     float grid_size = 20.0f;
@@ -59,18 +72,23 @@ public:
 
     Scene();
 
-    SceneNode* add_node(SceneNode* node, SceneNode* parent = nullptr);
+    SceneNode* add_node(std::unique_ptr<SceneNode> node, SceneNode* parent = nullptr);
+    SceneNode* add_node_raw(SceneNode* node, SceneNode* parent = nullptr);
     void remove_node(SceneNode* node);
     std::vector<SceneNode*> get_all_nodes() const;
     SceneNode* find_node(const std::string& name) const;
+    int get_node_count() const;
     void update();
-    void select(SceneNode* node) { selected_node = node; }
-    void deselect() { selected_node = nullptr; }
+    void select(SceneNode* node);
+    void deselect();
     void delete_selected();
     void duplicate_selected();
     void clear();
 
     bool raycast(const vec3& origin, const vec3& direction, SceneNode*& hit_node, float& hit_dist) const;
+
+    std::string save_to_string() const;
+    bool load_from_string(const std::string& data);
 
 private:
     bool raycast_node(const vec3& origin, const vec3& direction,
