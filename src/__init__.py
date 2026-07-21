@@ -1,3 +1,3 @@
-"""BloxBot - 3D/2D Object Creator with AI Generation"""
+"""OCP - Object Creation Project"""
 __version__ = "1.0.0"
-__author__ = "BloxBot Team"
+__author__ = "KitariosWebStudio - KWS"

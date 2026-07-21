@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-BloxBot - 3D/2D Object Creator with AI Generation
-A complete desktop application for creating 3D and 2D objects
-with manual editing and AI-powered automatic generation.
+OCP - Object Creation Project
+Developpe par KitariosWebStudio - KWS
+Logiciel de creation d'objets 3D et 2D avec edition manuelle et generation par IA.
 """
 
 import sys
@@ -252,9 +252,9 @@ QOpenGLWidget {
 def main():
     os.environ['QT_API'] = 'pyqt6'
     app = QApplication(sys.argv)
-    app.setApplicationName("BloxBot")
+    app.setApplicationName("OCP")
     app.setApplicationVersion("1.0.0")
-    app.setOrganizationName("BloxBot")
+    app.setOrganizationName("KitariosWebStudio - KWS")
 
     app.setStyleSheet(DARK_STYLESHEET)
     app.setFont(QFont("Segoe UI", 10))

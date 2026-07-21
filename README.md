@@ -1,16 +1,16 @@
-# BloxBot - 3D/2D Object Creator with AI
+# OCP - Object Creation Project
 
-A complete desktop application for creating 3D and 2D objects with manual editing and AI-powered automatic generation.
+Logiciel de creation d'objets 3D et 2D avec edition manuelle et generation par IA.
 
-## Features
+## Fonctionnalites
 
-- **Manual Mode**: Full 3D editor with OpenGL rendering, primitives, transforms, materials
-- **AI Auto Mode**: Generate complex 3D scenes from natural language prompts - 100% local, no internet
-- **Export**: OBJ, STL, SVG, PNG formats
-- **Materials**: PBR materials with metallic, roughness, shininess
-- **16 AI Scenes**: House, robot, castle, spaceship, tree, sword, and more
+- **Mode Manuel**: Editeur 3D complet avec OpenGL, primitives, transformations, materiaux
+- **Mode IA**: Generer des scenes 3D complexes a partir de prompts textuels - 100% local
+- **Export**: Formats OBJ, STL, SVG, PNG
+- **Materiaux**: Materiaux PBR avec metallic, roughness, shininess
+- **16 Scenes IA**: Maison, robot, chateau, vaisseau, arbre, epee, et plus
 
-## Quick Start
+## Demarrage Rapide
 
 ```bash
 pip install -r requirements.txt
@@ -19,7 +19,7 @@ python main.py
 
 ## Installation
 
-See `website/index.html` for detailed installation guide.
+Voir `website/index.html` pour le guide d'installation detaille.
 
 ## Build Executable
 
@@ -27,14 +27,18 @@ See `website/index.html` for detailed installation guide.
 python build.py
 ```
 
-## Tech Stack
+## Stack Technique
 
 - Python 3.10+
-- PyQt6 (GUI)
-- PyOpenGL (3D Rendering)
-- NumPy (Math)
-- Pillow (Image Export)
+- PyQt6 (Interface)
+- PyOpenGL (Rendu 3D)
+- NumPy (Mathematiques)
+- Pillow (Export Image)
 
-## License
+## Auteur
+
+Developpe par **KitariosWebStudio - KWS**
+
+## Licence
 
 MIT

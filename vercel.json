@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "bloxbot-website",
+  "name": "ocp-website",
   "builds": [
     {
       "src": "website/**",

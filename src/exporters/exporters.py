@@ -4,7 +4,7 @@ import numpy as np
 class OBJExporter:
     @staticmethod
     def export(scene, filepath):
-        lines = ["# BloxBot OBJ Export", f"# Scene: {scene.name}", ""]
+        lines = ["# OCP OBJ Export - KitariosWebStudio - KWS", f"# Scene: {scene.name}", ""]
         vertex_offset = 0
         nodes = [n for n in scene.get_all_nodes() if n.mesh is not None]
         for node in nodes:
@@ -53,7 +53,7 @@ class STLExporter:
                     triangles.append((n, wp0, wp1, wp2))
 
         with open(filepath, 'w') as f:
-            f.write("solid BloxBot\n")
+            f.write("solid OCP\n")
             for n, p0, p1, p2 in triangles:
                 f.write(f"  facet normal {n[0]:.6f} {n[1]:.6f} {n[2]:.6f}\n")
                 f.write("    outer loop\n")
@@ -62,7 +62,7 @@ class STLExporter:
                 f.write(f"      vertex {p2[0]:.6f} {p2[1]:.6f} {p2[2]:.6f}\n")
                 f.write("    endloop\n")
                 f.write("  endfacet\n")
-            f.write("endsolid BloxBot\n")
+            f.write("endsolid OCP\n")
         return len(triangles)
 
 
@@ -84,7 +84,7 @@ class SVGExporter:
         lines = [
             '<?xml version="1.0" encoding="UTF-8"?>',
             f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">',
-            f'  <title>BloxBot 2D Export</title>',
+            f'  <title>OCP 2D Export - KitariosWebStudio</title>',
         ]
 
         nodes = [n for n in scene.get_all_nodes() if n.mesh is not None]

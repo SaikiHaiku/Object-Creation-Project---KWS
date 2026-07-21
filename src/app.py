@@ -26,7 +26,7 @@ from .exporters.exporters import OBJExporter, STLExporter, SVGExporter
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("BloxBot - 3D/2D Creator with AI")
+        self.setWindowTitle("OCP - Object Creation Project")
         self.setMinimumSize(1200, 800)
         self.resize(1600, 900)
 
@@ -236,12 +236,12 @@ class MainWindow(QMainWindow):
             add_menu.addAction(action)
 
         help_menu = menubar.addMenu("Help")
-        about_action = QAction("About BloxBot", self)
+        about_action = QAction("About OCP", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
     def _create_status_bar(self):
-        self.statusBar().showMessage("Ready | BloxBot v1.0")
+        self.statusBar().showMessage("Ready | OCP v1.0 by KitariosWebStudio - KWS")
 
     def _connect_signals(self):
         self.toolbar.primitive_added.connect(self._add_primitive)
@@ -417,17 +417,18 @@ class MainWindow(QMainWindow):
     def _show_about(self):
         QMessageBox.about(
             self,
-            "About BloxBot",
-            "<h2>BloxBot v1.0</h2>"
-            "<p>3D/2D Object Creator with AI Generation</p>"
-            "<p>Create objects manually or use AI-powered automatic generation.</p>"
-            "<p><b>Features:</b></p>"
+            "About OCP",
+            "<h2>OCP v1.0</h2>"
+            "<p>Object Creation Project</p>"
+            "<p>Developpe par <b>KitariosWebStudio - KWS</b></p>"
+            "<p>Creation d'objets 3D et 2D avec edition manuelle et generation par IA.</p>"
+            "<p><b>Fonctionnalites:</b></p>"
             "<ul>"
-            "<li>Full 3D editor with OpenGL rendering</li>"
-            "<li>Manual mode: primitives, transforms, materials</li>"
-            "<li>AI mode: generate complex scenes from text</li>"
-            "<li>Export to OBJ, STL, SVG, PNG</li>"
-            "<li>100% local - no internet required</li>"
+            "<li>Editeur 3D complet avec rendu OpenGL</li>"
+            "<li>Mode manuel: primitives, transformations, materiaux</li>"
+            "<li>Mode IA: generer des scenes complexes depuis du texte</li>"
+            "<li>Export OBJ, STL, SVG, PNG</li>"
+            "<li>100% local - aucune connexion requise</li>"
             "</ul>"
         )
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "============================================"
-echo "  BloxBot Installer"
+echo "  OCP Installer - KitariosWebStudio - KWS"
 echo "============================================"
 echo
 
@@ -25,20 +25,21 @@ echo "Dependencies installed!"
 
 echo
 echo "[3/4] Creating launcher script..."
-cat > bloxbot.sh << 'EOF'
+cat > ocp.sh << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
 python3 main.py
 EOF
-chmod +x bloxbot.sh
-echo "Launcher created: bloxbot.sh"
+chmod +x ocp.sh
+echo "Launcher created: ocp.sh"
 
 echo
 echo "[4/4] Installation complete!"
 echo
 echo "============================================"
-echo "  BloxBot is ready to use!"
+echo "  OCP is ready to use!"
+echo "  Developed by KitariosWebStudio - KWS"
 echo "============================================"
 echo
-echo "You can now run: ./bloxbot.sh"
+echo "You can now run: ./ocp.sh"
 echo "Or: python3 main.py"

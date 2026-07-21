@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BloxBot Build Script
+OCP Build Script - KitariosWebStudio - KWS
 Creates a standalone executable using PyInstaller.
 """
 
@@ -11,7 +11,7 @@ import os
 
 def build():
     print("=" * 60)
-    print("  BloxBot Build Script")
+    print("  OCP Build Script - KitariosWebStudio")
     print("=" * 60)
     print()
 
@@ -33,7 +33,7 @@ def build():
     print("[3/4] Building executable...")
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--name=BloxBot",
+        "--name=OCP",
         "--onefile",
         "--windowed",
         "--icon=assets/icon.ico" if os.path.exists("assets/icon.ico") else "",
@@ -58,7 +58,7 @@ def build():
         return False
 
     print("[4/4] Build complete!")
-    exe_path = os.path.join("dist", "BloxBot.exe")
+    exe_path = os.path.join("dist", "OCP.exe")
     if os.path.exists(exe_path):
         size_mb = os.path.getsize(exe_path) / (1024 * 1024)
         print(f"  Executable: {exe_path}")

@@ -1,6 +1,6 @@
 @echo off
 echo ============================================
-echo   BloxBot Installer
+echo   OCP Installer - KitariosWebStudio - KWS
 echo ============================================
 echo.
 
@@ -27,26 +27,27 @@ echo Dependencies installed!
 
 echo.
 echo [3/4] Creating desktop shortcut...
-echo Set oWS = WScript.CreateObject^("WScript.Shell"^) > "%temp%\BloxBot.vbs"
-echo sLinkFile = oWS.SpecialFolders^("Desktop"^) ^& "\BloxBot.lnk" >> "%temp%\BloxBot.vbs"
-echo Set oLink = oWS.CreateShortcut^(sLinkFile^) >> "%temp%\BloxBot.vbs"
-echo oLink.TargetPath = "%~dp0main.py" >> "%temp%\BloxBot.vbs"
-echo oLink.WorkingDirectory = "%~dp0" >> "%temp%\BloxBot.vbs"
-echo oLink.Description = "BloxBot - 3D/2D Creator" >> "%temp%\BloxBot.vbs"
-echo oLink.Save >> "%temp%\BloxBot.vbs"
-cscript /nologo "%temp%\BloxBot.vbs"
-del "%temp%\BloxBot.vbs"
+echo Set oWS = WScript.CreateObject^("WScript.Shell"^) > "%temp%\OCP.vbs"
+echo sLinkFile = oWS.SpecialFolders^("Desktop"^) ^& "\OCP.lnk" >> "%temp%\OCP.vbs"
+echo Set oLink = oWS.CreateShortcut^(sLinkFile^) >> "%temp%\OCP.vbs"
+echo oLink.TargetPath = "%~dp0main.py" >> "%temp%\OCP.vbs"
+echo oLink.WorkingDirectory = "%~dp0" >> "%temp%\OCP.vbs"
+echo oLink.Description = "OCP - Object Creation Project" >> "%temp%\OCP.vbs"
+echo oLink.Save >> "%temp%\OCP.vbs"
+cscript /nologo "%temp%\OCP.vbs"
+del "%temp%\OCP.vbs"
 echo Desktop shortcut created!
 
 echo.
 echo [4/4] Installation complete!
 echo.
 echo ============================================
-echo   BloxBot is ready to use!
+echo   OCP is ready to use!
+echo   Developed by KitariosWebStudio - KWS
 echo ============================================
 echo.
 echo You can now:
-echo   - Double-click "BloxBot" on your desktop
+echo   - Double-click "OCP" on your desktop
 echo   - Run: python main.py
 echo   - Open website/index.html for documentation
 echo.

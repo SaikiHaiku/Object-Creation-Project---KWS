@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BloxBot - Download</title>
+    <title>OCP - Object Creation Project | KitariosWebStudio - KWS</title>
+    <meta name="description" content="OCP - Logiciel de creation d'objets 3D et 2D avec edition manuelle et generation par IA. Developpe par KitariosWebStudio - KWS.">
+    <meta name="author" content="KitariosWebStudio - KWS">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -35,21 +37,33 @@
             50% { transform: scale(1.1); opacity: 1; }
         }
         .hero h1 {
-            font-size: 3.5em;
+            font-size: 4em;
             background: linear-gradient(135deg, #6c6cff, #9c9cff, #6c6cff);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             position: relative;
+            letter-spacing: 8px;
         }
         .hero .subtitle {
-            font-size: 1.3em;
+            font-size: 1.4em;
             color: #8888bb;
             margin-bottom: 10px;
             position: relative;
         }
         .hero .version {
             color: #6666aa;
+            font-size: 0.9em;
+            position: relative;
+        }
+        .hero .author-badge {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 8px 20px;
+            background: rgba(100, 100, 255, 0.15);
+            border: 1px solid rgba(100, 100, 255, 0.3);
+            border-radius: 20px;
+            color: #9c9cff;
             font-size: 0.9em;
             position: relative;
         }
@@ -206,6 +220,13 @@
             border-top: 1px solid #1a1a3a;
             color: #555577;
         }
+        .footer a {
+            color: #8888ff;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
         .screenshot-placeholder {
             width: 100%;
             max-width: 800px;
@@ -220,75 +241,92 @@
             color: #555577;
             font-size: 1.2em;
         }
+        .kws-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 15px;
+            padding: 6px 16px;
+            background: rgba(100, 255, 100, 0.1);
+            border: 1px solid rgba(100, 255, 100, 0.3);
+            border-radius: 15px;
+            color: #88cc88;
+            font-size: 0.85em;
+            position: relative;
+        }
     </style>
 </head>
 <body>
     <div class="hero">
-        <h1>BloxBot</h1>
-        <p class="subtitle">3D/2D Object Creator with AI-Powered Generation</p>
-        <p class="version">Version 1.0.0 - 100% Local, No Internet Required</p>
+        <h1>OCP</h1>
+        <p class="subtitle">Object Creation Project</p>
+        <p class="version">Version 1.0.0 - 100% Local, Aucune Connexion Requise</p>
+        <div class="kws-badge">
+            <span>&#128736;</span>
+            Developpe par KitariosWebStudio - KWS
+        </div>
     </div>
 
     <div class="container">
         <div class="features">
             <div class="feature-card">
                 <span class="feature-icon">&#127912;</span>
-                <h3>Manual Editor</h3>
-                <p>Full 3D editor with OpenGL rendering. Add primitives, transform, rotate, scale. Edit materials, colors, and properties in real-time.</p>
+                <h3>Editeur Manuel</h3>
+                <p>Editeur 3D complet avec rendu OpenGL. Ajoutez des primitives, transformez, tournez, redimensionnez. Editez les materiaux, couleurs et proprietes en temps reel.</p>
             </div>
             <div class="feature-card">
                 <span class="feature-icon">&#129302;</span>
-                <h3>AI Auto Generation</h3>
-                <p>Describe what you want in natural language and our local AI generates complex 3D objects and scenes. No cloud, no Ollama, 100% offline.</p>
+                <h3>Generation IA Automatique</h3>
+                <p>Decrivez ce que vous vouvez en langage naturel et notre IA locale genere des objets et scenes 3D complexes. Pas de cloud, pas d'Ollama, 100% hors ligne.</p>
             </div>
             <div class="feature-card">
                 <span class="feature-icon">&#128230;</span>
-                <h3>Multiple Formats</h3>
-                <p>Export to OBJ, STL, SVG, and PNG. Compatible with Blender, Unity, Unreal Engine, and other 3D software.</p>
+                <h3>Plusieurs Formats</h3>
+                <p>Exportez en OBJ, STL, SVG et PNG. Compatible avec Blender, Unity, Unreal Engine et autres logiciels 3D.</p>
             </div>
             <div class="feature-card">
                 <span class="feature-icon">&#128736;</span>
-                <h3>Full Material System</h3>
-                <p>PBR materials with metallic, roughness, shininess. Custom colors, wireframe mode, transparency, and emissive materials.</p>
+                <h3>Systeme de Materiaux</h3>
+                <p>Materiaux PBR avec metallic, roughness, shininess. Couleurs personnalisees, mode wireframe, transparence et materiaux emissifs.</p>
             </div>
             <div class="feature-card">
                 <span class="feature-icon">&#127758;</span>
                 <h3>100% Local</h3>
-                <p>Everything runs on your computer. No data sent anywhere. Your creations stay private and secure.</p>
+                <p>Tout fonctionne sur votre ordinateur. Aucune donnee envoyee. Vos creations restent privees et securisees.</p>
             </div>
             <div class="feature-card">
                 <span class="feature-icon">&#9889;</span>
-                <h3>Fast & Lightweight</h3>
-                <p>Optimized OpenGL rendering with real-time performance. Works on any modern computer with a GPU.</p>
+                <h3>Rapide & Leger</h3>
+                <p>Rendu OpenGL optimise avec performance en temps reel. Fonctionne sur tout ordinateur moderne avec GPU.</p>
             </div>
         </div>
 
         <div class="screenshot-placeholder">
-            [ Application Screenshot ]
+            [ Screenshot de l'application ]
         </div>
 
         <div class="download-section">
-            <h2>Download BloxBot</h2>
+            <h2>Telecharger OCP</h2>
             <a href="#" class="download-btn" onclick="alert('Build the executable first with: python build.py'); return false;">
-                &#11015; Download for Windows
+                &#11015; Telecharger pour Windows
             </a>
             <br>
-            <a href="#" class="download-btn secondary" onclick="alert('Coming soon!'); return false;">
-                &#128225; Download for macOS
+            <a href="#" class="download-btn secondary" onclick="alert('Bientot disponible!'); return false;">
+                &#128225; Telecharger pour macOS
             </a>
-            <a href="#" class="download-btn secondary" onclick="alert('Coming soon!'); return false;">
-                &#127987; Download for Linux
+            <a href="#" class="download-btn secondary" onclick="alert('Bientot disponible!'); return false;">
+                &#127987; Telecharger pour Linux
             </a>
         </div>
 
         <div class="install-steps">
-            <h2>&#128295; Installation Guide</h2>
+            <h2>&#128295; Guide d'Installation</h2>
 
             <div class="step">
                 <div class="step-num">1</div>
                 <div class="step-content">
-                    <h4>Install Python 3.10+</h4>
-                    <p>Download and install Python from <strong>python.org</strong>. Make sure to check "Add Python to PATH" during installation.</p>
+                    <h4>Installer Python 3.10+</h4>
+                    <p>Telechargez et installez Python depuis <strong>python.org</strong>. Cochez "Add Python to PATH" pendant l'installation.</p>
                     <div class="code-block">python --version</div>
                 </div>
             </div>
@@ -296,17 +334,17 @@
             <div class="step">
                 <div class="step-num">2</div>
                 <div class="step-content">
-                    <h4>Download BloxBot</h4>
-                    <p>Download the source code or clone the repository.</p>
-                    <div class="code-block">git clone https://github.com/your-repo/bloxbot.git<br>cd bloxbot</div>
+                    <h4>Telecharger OCP</h4>
+                    <p>Telechargez le code source ou clonez le depot.</p>
+                    <div class="code-block">git clone https://github.com/SaikiHaiku/Object-Creation-Project---KWS.git<br>cd Object-Creation-Project---KWS</div>
                 </div>
             </div>
 
             <div class="step">
                 <div class="step-num">3</div>
                 <div class="step-content">
-                    <h4>Install Dependencies</h4>
-                    <p>Install all required packages with one command.</p>
+                    <h4>Installer les Dependances</h4>
+                    <p>Installez tous les packages requis en une commande.</p>
                     <div class="code-block">pip install -r requirements.txt</div>
                 </div>
             </div>
@@ -314,8 +352,8 @@
             <div class="step">
                 <div class="step-num">4</div>
                 <div class="step-content">
-                    <h4>Launch BloxBot</h4>
-                    <p>Run the application and start creating!</p>
+                    <h4>Lancer OCP</h4>
+                    <p>Lancez l'application et commencez a creer !</p>
                     <div class="code-block">python main.py</div>
                 </div>
             </div>
@@ -323,8 +361,8 @@
             <div class="step">
                 <div class="step-num">5</div>
                 <div class="step-content">
-                    <h4>Build Executable (Optional)</h4>
-                    <p>Create a standalone .exe file that doesn't require Python.</p>
+                    <h4>Build Executable (Optionnel)</h4>
+                    <p>Creez un fichier .exe autonome qui ne necessite pas Python.</p>
                     <div class="code-block">python build.py</div>
                 </div>
             </div>
@@ -333,25 +371,29 @@
         <div class="specs">
             <div class="spec-item">
                 <div class="value">Python 3.10+</div>
-                <div class="label">Required Runtime</div>
+                <div class="label">Runtime Requis</div>
             </div>
             <div class="spec-item">
                 <div class="value">&lt; 50 MB</div>
-                <div class="label">Disk Space</div>
+                <div class="label">Espace Disque</div>
             </div>
             <div class="spec-item">
                 <div class="value">4 GB+</div>
-                <div class="label">RAM Recommended</div>
+                <div class="label">RAM Recommande</div>
             </div>
             <div class="spec-item">
-                <div class="value">Any GPU</div>
+                <div class="value">GPU</div>
                 <div class="label">OpenGL 3.3+</div>
             </div>
         </div>
 
         <div class="footer">
-            <p>BloxBot v1.0.0 | Built with Python, PyQt6, and OpenGL</p>
-            <p style="margin-top: 8px;">100% Local - No Internet Required - Your Data Stays Yours</p>
+            <p><strong>OCP v1.0.0</strong> - Object Creation Project</p>
+            <p style="margin-top: 8px;">Developpe avec Python, PyQt6, et OpenGL</p>
+            <p style="margin-top: 8px;">100% Local - Aucune Connexion Requise - Vos Donnees Restent Votres</p>
+            <p style="margin-top: 15px; color: #444466;">
+                &copy; 2026 <a href="#">KitariosWebStudio - KWS</a>. Tous droits reserves.
+            </p>
         </div>
     </div>
 </body>
