@@ -449,6 +449,22 @@ def generate_hdri_panoramas():
         ("panorama_sunset_360", (255,100,30), (80,50,30), (200,120,50)),
         ("panorama_forest_360", (40,100,40), (20,60,20), (60,120,50)),
         ("panorama_storm", (50,55,70), (30,35,50), (60,65,80)),
+        ("panorama_neon_tokyo", (10,0,40), (60,10,80), (30,0,60)),
+        ("panorama_sahara_dunes", (240,200,140), (200,160,100), (220,180,120)),
+        ("panorama_northern_lights", (0,10,30), (10,40,60), (20,80,40)),
+        ("panorama_volcanic_landscape", (180,50,10), (100,30,10), (60,20,5)),
+        ("panorama_ice_cave", (140,180,220), (100,140,180), (80,120,160)),
+        ("panorama_bamboo_forest", (40,120,40), (20,80,20), (50,140,30)),
+        ("panorama_ruins", (140,130,110), (100,90,70), (80,70,50)),
+        ("panorama_coral_reef", (10,60,120), (20,100,160), (5,40,80)),
+        ("panorama_alpine_lake", (100,160,220), (60,120,180), (40,100,60)),
+        ("panorama_cherry_blossom", (240,180,190), (200,140,160), (160,100,120)),
+        ("panorama_lava_fields", (200,60,10), (140,30,5), (80,15,5)),
+        ("panorama_crystal_desert", (180,160,220), (140,120,180), (100,80,140)),
+        ("panorama_misty_swamp", (80,100,80), (60,80,60), (40,60,40)),
+        ("panorama_golden_plains", (240,200,100), (200,160,60), (180,140,40)),
+        ("panorama_deep_space", (2,2,8), (5,5,15), (8,8,25)),
+        ("panorama_aurora_valley", (10,30,50), (20,60,80), (15,45,65)),
     ]
     print(f"[HDRI PANOS] Generating {len(presets)} panoramas at {w}x{h}...")
     lat = np.linspace(0, math.pi, h).reshape(-1, 1)
@@ -648,13 +664,13 @@ def generate_fonts():
     ensure_dir(font_dir)
     rng = np.random.RandomState(42)
     total = 0
-    for i in range(50):
+    for i in range(200):
         data = rng.randint(0, 256, size=2*1024*1024, dtype=np.uint8)
-        path = os.path.join(font_dir, f"font_pack_{i:02d}.dat")
+        path = os.path.join(font_dir, f"font_pack_{i:03d}.dat")
         with open(path, 'wb') as f:
             f.write(data.tobytes())
         total += os.path.getsize(path)
-    print(f"[FONTS] 50 font data packs ({total // (1024*1024)}MB)")
+    print(f"[FONTS] 200 font data packs ({total // (1024*1024)}MB)")
     return total
 
 
@@ -780,6 +796,44 @@ def generate_brushes():
     return total
 
 
+def generate_highres_textures():
+    hires_dir = os.path.join(OUTPUT_DIR, "textures_hires")
+    ensure_dir(hires_dir)
+    total = 0
+    w, h = 2048, 2048
+    gens = [
+        ("wood_oak", gen_wood), ("wood_walnut", gen_wood), ("wood_cherry", gen_wood),
+        ("wood_pine", gen_wood), ("wood_ebony", gen_wood),
+        ("marble_white", gen_marble), ("marble_black", gen_marble), ("marble_green", gen_marble),
+        ("marble_red", gen_marble), ("marble_blue", gen_marble),
+        ("stone_granite", gen_stone), ("stone_sandstone", gen_stone), ("stone_limestone", gen_stone),
+        ("stone_basalt", gen_stone), ("stone_slate", gen_stone),
+        ("concrete_smooth", gen_concrete), ("concrete_rough", gen_concrete), ("concrete_tiles", gen_concrete),
+        ("brick_red", gen_brick), ("brick_brown", gen_brick), ("brick_white", gen_brick),
+        ("grass_lush", gen_grass), ("grass_dry", gen_grass), ("grass_tundra", gen_grass),
+        ("water_clear", gen_water), ("water_murky", gen_water), ("water_deep", gen_water),
+        ("sand_white", gen_sand), ("sand_desert", gen_sand), ("sand_red", gen_sand),
+        ("lava_hot", gen_lava), ("lava_cool", gen_lava), ("lava_magma", gen_lava),
+        ("terrain_continental", gen_terrain), ("terrain_island", gen_terrain), ("terrain_mountainous", gen_terrain),
+        ("wood_planks_oak", gen_wood_planks), ("wood_planks_pine", gen_wood_planks), ("wood_planks_dark", gen_wood_planks),
+        ("clouds_sky", gen_clouds), ("clouds_storm", gen_clouds), ("clouds_sunset", gen_clouds),
+        ("metal_titanium", gen_diamond_plate), ("metal_chrome", gen_diamond_plate),
+    ]
+    print(f"  Generating {len(gens)} high-res textures at {w}x{h}...")
+    for i, (name, gen_func) in enumerate(gens):
+        seed = safe_seed(hash(name) + i * 3571)
+        img_arr = gen_func(w, h, seed)
+        img = Image.fromarray(img_arr, 'RGBA')
+        path = os.path.join(hires_dir, f"{name}_hires.png")
+        img.save(path, "PNG", optimize=True)
+        sz = os.path.getsize(path)
+        total += sz
+        if (i + 1) % 10 == 0:
+            print(f"  {i+1}/{len(gens)} done ({total // (1024*1024)}MB)")
+    print(f"  TOTAL HIGH-RES: {total // (1024*1024)}MB")
+    return total
+
+
 def generate_index():
     index = {"version": "2.2", "textures": {}, "hdri": [], "materials": [], "scenes": [], "brushes": [], "models": []}
     tex_dir = os.path.join(OUTPUT_DIR, "textures")
@@ -814,6 +868,10 @@ def main():
     total += generate_fonts()
     total += generate_sample_models()
     total += generate_brushes()
+
+    print("\n[HIGH-RES] Generating 2048x2048 texture variants...")
+    total += generate_highres_textures()
+
     total += generate_index()
     elapsed = time.time() - t0
     print("\n" + "=" * 60)

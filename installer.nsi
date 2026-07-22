@@ -9,13 +9,13 @@
 !include "WinMessages.nsh"
 !include "LogicLib.nsh"
 
-; --- General ---
+SetCompressor /SOLID lzma
+
 Name "OCP - Object Creation Project"
 OutFile "OCP-v2.2-Installer.exe"
 InstallDir "$PROGRAMFILES\OCP"
 InstallDirRegKey HKLM "Software\OCP" "InstallDir"
 RequestExecutionLevel admin
-SetCompressor zlib
 Unicode True
 
 ; --- Version Information ---
@@ -74,11 +74,6 @@ Section $(DESC_MainApp) SecMainApp
 
     File "E:\Object Creation Project - KWS\cpp\OCP.exe"
     File "E:\Object Creation Project - KWS\cpp\libwinpthread-1.dll"
-
-    ; Resource Library (textures, HDRIs, materials, scenes, models, brushes)
-    SetOutPath "$INSTDIR\resources"
-    File /r "E:\Object Creation Project - KWS\resources\*.*"
-    SetOutPath "$INSTDIR"
 
     WriteRegStr HKLM "Software\OCP" "InstallDir" "$INSTDIR"
 
