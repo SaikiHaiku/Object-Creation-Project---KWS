@@ -102,10 +102,15 @@ inline float fbm3d(float x, float y, float z, int octaves = 6) {
 template<typename MeshType>
 void deform_mesh(MeshType& m, float amount, float seed) {
     for (auto& v : m.vertices) {
-        float n = fbm3d(v.position.x * 3.0f + seed,
-                        v.position.y * 3.0f + seed * 0.7f,
-                        v.position.z * 3.0f + seed * 1.3f, 4);
-        v.position += v.normal * n * amount;
+        float wx = v.position.x + fbm3d(v.position.x * 2.0f + seed + 100.0f, v.position.y * 2.0f, v.position.z * 2.0f, 3) * amount * 0.6f;
+        float wy = v.position.y + fbm3d(v.position.x * 2.0f, v.position.y * 2.0f + seed + 200.0f, v.position.z * 2.0f, 3) * amount * 0.6f;
+        float wz = v.position.z + fbm3d(v.position.x * 2.0f, v.position.y * 2.0f, v.position.z * 2.0f + seed + 300.0f, 3) * amount * 0.6f;
+        float n = fbm3d(wx * 3.0f + seed,
+                        wy * 3.0f + seed * 0.7f,
+                        wz * 3.0f + seed * 1.3f, 6);
+        float ridge = 1.0f - std::abs(fbm3d(wx * 4.0f + seed + 50.0f, wy * 4.0f, wz * 4.0f, 4));
+        ridge = ridge * ridge * 0.25f;
+        v.position += v.normal * (n + ridge) * amount;
     }
     m.dirty = true;
     m.compute_normals();

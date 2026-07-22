@@ -17,6 +17,7 @@ struct ParsedPrompt {
     int count = 1;
     std::string arrangement;
     std::vector<std::string> modifiers;
+    std::string style;
     uint32_t seed = 0;
 };
 
@@ -38,6 +39,8 @@ public:
     };
 
     std::mt19937& rng();
+    float randf();
+    void apply_prompt_material(std::vector<Part>& parts, const ParsedPrompt& p);
 
     // === ORIGINAL SCENE GENERATORS (ORGANIC REWRITE) ===
     std::vector<Part> generate_tree(float height = 3.0f);
@@ -111,6 +114,7 @@ private:
     void bend_mesh(Mesh& m, float amount, vec3 axis);
     void taper_mesh(Mesh& m, float top_scale, float bottom_scale);
     void add_random_detail(Mesh& m, float detail_size, int count);
+    void apply_vertex_color_noise(Mesh& m, vec4 base_color, float variation, float seed);
 
     // --- Organic Mesh Creators ---
     Mesh create_organic_sphere(float radius, int seg, int rings, float seed, float bumpiness);
@@ -157,7 +161,6 @@ private:
     Mesh create_ring(float outer_r, float inner_r, int segs);
     void merge_mesh(Mesh& target, const Mesh& source, const vec3& offset);
     void merge_mesh_transform(Mesh& target, const Mesh& source, const mat4& transform);
-    float randf();
 };
 
 class ObjectGenerator {
