@@ -157,6 +157,21 @@ void Scene::select(SceneNode* node) {
     if (node) multi_selection.push_back(node);
 }
 
+void Scene::toggle_multi_select(SceneNode* node) {
+    if (!node) return;
+    for (auto it = multi_selection.begin(); it != multi_selection.end(); ++it) {
+        if (*it == node) {
+            multi_selection.erase(it);
+            if (selected_node == node) {
+                selected_node = multi_selection.empty() ? nullptr : multi_selection.back();
+            }
+            return;
+        }
+    }
+    multi_selection.push_back(node);
+    selected_node = node;
+}
+
 void Scene::deselect() {
     selected_node = nullptr;
     multi_selection.clear();
@@ -180,6 +195,71 @@ void Scene::duplicate_selected() {
         root.add_child(std::move(dup));
     }
     select(dup_raw);
+}
+
+void Scene::copy_selected() {
+    clipboard.clear();
+    for (auto* node : multi_selection) {
+        clipboard.push_back(node->clone_recursive());
+    }
+    if (clipboard.empty() && selected_node) {
+        clipboard.push_back(selected_node->clone_recursive());
+    }
+}
+
+void Scene::paste_clipboard() {
+    if (clipboard.empty()) return;
+    std::vector<SceneNode*> new_nodes;
+    for (auto& c : clipboard) {
+        auto dup = c->clone_recursive();
+        SceneNode* raw = dup.get();
+        raw->position.x += 1.5f;
+        root.add_child(std::move(dup));
+        new_nodes.push_back(raw);
+    }
+    if (!new_nodes.empty()) {
+        select(new_nodes.front());
+    }
+}
+
+void Scene::group_selected() {
+    if (multi_selection.size() < 2) return;
+    auto group = std::make_unique<SceneNode>();
+    group->name = "Group";
+    SceneNode* group_raw = group.get();
+    SceneNode* first_parent = multi_selection[0]->parent ? multi_selection[0]->parent : &root;
+    first_parent->add_child(std::move(group));
+    std::vector<SceneNode*> to_move = multi_selection;
+    for (auto* node : to_move) {
+        if (!node->parent) continue;
+        vec3 world_pos = node->get_world_position();
+        node->parent->remove_child(node);
+        node->parent = nullptr;
+        node->position = world_pos;
+        auto ptr = std::unique_ptr<SceneNode>(node);
+        group_raw->add_child(std::move(ptr));
+    }
+    select(group_raw);
+}
+
+void Scene::ungroup_selected() {
+    if (!selected_node || selected_node->children.empty()) return;
+    SceneNode* parent = selected_node->parent ? selected_node->parent : &root;
+    vec3 group_world = selected_node->get_world_position();
+    std::vector<std::unique_ptr<SceneNode>> kids;
+    for (auto& c : selected_node->children) {
+        vec3 child_world = c->get_world_position();
+        c->position = child_world - group_world;
+        kids.push_back(std::move(c));
+    }
+    selected_node->children.clear();
+    SceneNode* to_remove = selected_node;
+    for (auto& k : kids) {
+        SceneNode* raw = k.get();
+        parent->add_child(std::move(k));
+    }
+    parent->remove_child(to_remove);
+    select(parent->children.empty() ? nullptr : parent->children.back().get());
 }
 
 void Scene::clear() {

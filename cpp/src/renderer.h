@@ -47,7 +47,7 @@ private:
     void set_vec4(uint32_t shader, const char* name, const vec4& v);
     void set_float(uint32_t shader, const char* name, float v);
     void set_int(uint32_t shader, const char* name, int v);
-    void render_node(SceneNode* node, uint32_t shader, const mat4& view, const mat4& proj);
+    void render_node(SceneNode* node, uint32_t shader, const mat4& view, const mat4& proj, bool global_wire = false, bool xray = false);
     void render_selection_box(SceneNode* node, const mat4& view, const mat4& proj);
 };
 

@@ -265,7 +265,7 @@ Renderer::MeshBuffers Renderer::get_or_create_buffers(Mesh* mesh) {
     return mb;
 }
 
-void Renderer::render_node(SceneNode* node, uint32_t shader, const mat4& view, const mat4& proj) {
+void Renderer::render_node(SceneNode* node, uint32_t shader, const mat4& view, const mat4& proj, bool global_wire, bool xray) {
     if (!node || !node->visible) return;
 
     if (node->mesh && node->material && node->mesh->get_vertex_count() > 0) {
@@ -280,16 +280,19 @@ void Renderer::render_node(SceneNode* node, uint32_t shader, const mat4& view, c
         set_float(shader, "uMetallic", mat.metallic);
         set_float(shader, "uRoughness", mat.roughness);
 
-        if (mat.backface_culling) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-        glPolygonMode(GL_FRONT_AND_BACK, mat.wireframe ? GL_LINE : GL_FILL);
+        bool do_wireframe = mat.wireframe || global_wire;
+        if (xray) { glDisable(GL_CULL_FACE); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); }
+        if (mat.backface_culling && !xray) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+        glPolygonMode(GL_FRONT_AND_BACK, do_wireframe ? GL_LINE : GL_FILL);
 
         glBindVertexArray(mb.vao);
         glDrawElements(GL_TRIANGLES, mb.index_count, GL_UNSIGNED_INT, nullptr);
         glBindVertexArray(0);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glEnable(GL_CULL_FACE);
+        if (xray) glDisable(GL_BLEND);
     }
-    for (auto& c : node->children) render_node(c.get(), shader, view, proj);
+    for (auto& c : node->children) render_node(c.get(), shader, view, proj, global_wire, xray);
 }
 
 void Renderer::render_selection_box(SceneNode* node, const mat4& view, const mat4& proj) {
@@ -433,7 +436,7 @@ void Renderer::render_scene(Scene& scene, Camera& camera, int vp_x, int vp_y, in
     }
     set_int(shader_3d, "uLightCount", light_count);
 
-    for (auto& c : scene.root.children) render_node(c.get(), shader_3d, view, proj);
+    for (auto& c : scene.root.children) render_node(c.get(), shader_3d, view, proj, scene.global_wireframe, scene.xray_mode);
 
     if (scene.selected_node) render_selection_box(scene.selected_node, view, proj);
 }

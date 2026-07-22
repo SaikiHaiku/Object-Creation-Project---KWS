@@ -218,7 +218,7 @@ static void setup_default_scene() {
 
 static void setup_key_callbacks(GLFWwindow* window);
 
-static void mouse_button_callback(GLFWwindow* w, int button, int action, int) {
+static void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (action == GLFW_PRESS) {
         if (button == GLFW_MOUSE_BUTTON_MIDDLE) mouse_orbiting = true;
         else if (button == GLFW_MOUSE_BUTTON_RIGHT) mouse_panning = true;
@@ -229,8 +229,13 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int) {
             camera.screen_to_ray(vx, vy, (float)WIN_W, (float)WIN_H, origin, dir);
             SceneNode* hit; float dist;
             if (scene.raycast(origin, dir, hit, dist)) {
-                scene.select(hit);
-                status_text = "Selected: " + hit->name;
+                if (mods & GLFW_MOD_CONTROL) {
+                    scene.toggle_multi_select(hit);
+                    status_text = "Multi-select: " + hit->name + " (" + std::to_string(scene.multi_selection.size()) + " selected)";
+                } else {
+                    scene.select(hit);
+                    status_text = "Selected: " + hit->name;
+                }
                 strncpy(rename_buf, hit->name.c_str(), sizeof(rename_buf));
                 log_message("Selected: " + hit->name);
             }
@@ -262,11 +267,15 @@ static void framebuffer_size_callback(GLFWwindow*, int w, int h) {
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action != GLFW_PRESS) return;
     bool ctrl = (mods & GLFW_MOD_CONTROL) != 0;
+    bool shift = (mods & GLFW_MOD_SHIFT) != 0;
 
-    if (key == GLFW_KEY_DELETE) { scene.delete_selected(); status_text = "Deleted"; log_message("Deleted selected"); }
-    else if (ctrl && key == GLFW_KEY_Z) undo();
+    if (ctrl && key == GLFW_KEY_Z) undo();
     else if (ctrl && key == GLFW_KEY_Y) redo();
-    else if (ctrl && key == GLFW_KEY_D) { scene.duplicate_selected(); status_text = "Duplicated"; log_message("Duplicated"); }
+    else if (ctrl && key == GLFW_KEY_D) { save_undo("Duplicate"); scene.duplicate_selected(); status_text = "Duplicated"; log_message("Duplicated"); }
+    else if (ctrl && key == GLFW_KEY_C) { scene.copy_selected(); status_text = "Copied"; log_message("Copied to clipboard"); }
+    else if (ctrl && key == GLFW_KEY_V) { save_undo("Paste"); scene.paste_clipboard(); status_text = "Pasted"; log_message("Pasted from clipboard"); }
+    else if (ctrl && !shift && key == GLFW_KEY_G) { save_undo("Group"); scene.group_selected(); status_text = "Grouped"; log_message("Grouped selected nodes"); }
+    else if (ctrl && shift && key == GLFW_KEY_G) { save_undo("Ungroup"); scene.ungroup_selected(); status_text = "Ungrouped"; log_message("Ungrouped"); }
     else if (ctrl && key == GLFW_KEY_N) setup_default_scene();
     else if (ctrl && key == GLFW_KEY_S) {
         auto p = save_file_dialog("OCP Scene\0*.ocp\0All\0*.*\0");
@@ -293,18 +302,28 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
             }
         }
     }
-    else if (ctrl && key == GLFW_KEY_A) { auto ns = scene.get_all_nodes(); if (!ns.empty()) scene.select(ns[0]); }
-    else if (ctrl && key == GLFW_KEY_1) { selected_tool = 0; status_text = "Move tool"; }
-    else if (ctrl && key == GLFW_KEY_2) { selected_tool = 1; status_text = "Rotate tool"; }
-    else if (ctrl && key == GLFW_KEY_3) { selected_tool = 2; status_text = "Scale tool"; }
+    else if (ctrl && key == GLFW_KEY_A) {
+        auto ns = scene.get_all_nodes();
+        scene.multi_selection.clear();
+        for (auto* n : ns) scene.multi_selection.push_back(n);
+        if (!ns.empty()) scene.selected_node = ns[0];
+    }
+    else if (key == GLFW_KEY_DELETE) { save_undo("Delete"); scene.delete_selected(); status_text = "Deleted"; log_message("Deleted selected"); }
+    else if (key == GLFW_KEY_G && !ctrl) { selected_tool = 0; status_text = "Tool: Move (G)"; log_message("Tool: Move"); }
+    else if (key == GLFW_KEY_E && !ctrl) { selected_tool = 1; status_text = "Tool: Rotate (E)"; log_message("Tool: Rotate"); }
+    else if (key == GLFW_KEY_R && !ctrl) { selected_tool = 2; status_text = "Tool: Scale (R)"; log_message("Tool: Scale"); }
+    else if (key == GLFW_KEY_W && !ctrl) { scene.global_wireframe = !scene.global_wireframe; status_text = scene.global_wireframe ? "Wireframe: ON" : "Wireframe: OFF"; }
+    else if (key == GLFW_KEY_X && !ctrl) { scene.xray_mode = !scene.xray_mode; status_text = scene.xray_mode ? "X-Ray: ON" : "X-Ray: OFF"; }
     else if (key == GLFW_KEY_F && scene.selected_node) {
         vec3 c = (scene.selected_node->get_bounding_box_min() + scene.selected_node->get_bounding_box_max()) * 0.5f;
         float s = glm::length(scene.selected_node->get_bounding_box_max() - scene.selected_node->get_bounding_box_min());
         camera.focus_on(c, s);
     }
-    else if (key == GLFW_KEY_G) scene.grid_enabled = !scene.grid_enabled;
     else if (key == GLFW_KEY_H) show_console = !show_console;
     else if (key == GLFW_KEY_F1) show_about = true;
+    else if (ctrl && key == GLFW_KEY_1) { selected_tool = 0; status_text = "Tool: Move"; }
+    else if (ctrl && key == GLFW_KEY_2) { selected_tool = 1; status_text = "Tool: Rotate"; }
+    else if (ctrl && key == GLFW_KEY_3) { selected_tool = 2; status_text = "Tool: Scale"; }
 }
 
 static void draw_menu_bar() {
@@ -356,9 +375,20 @@ static void draw_menu_bar() {
             if (ImGui::MenuItem("Undo", "Ctrl+Z")) undo();
             if (ImGui::MenuItem("Redo", "Ctrl+Y")) redo();
             ImGui::Separator();
-            if (ImGui::MenuItem("Duplicate", "Ctrl+D")) scene.duplicate_selected();
+            if (ImGui::MenuItem("Copy", "Ctrl+C")) scene.copy_selected();
+            if (ImGui::MenuItem("Paste", "Ctrl+V")) { save_undo("Paste"); scene.paste_clipboard(); }
+            if (ImGui::MenuItem("Duplicate", "Ctrl+D")) { save_undo("Duplicate"); scene.duplicate_selected(); }
             if (ImGui::MenuItem("Delete", "Del")) { save_undo("Delete"); scene.delete_selected(); status_text = "Deleted"; }
-            if (ImGui::MenuItem("Select All", "Ctrl+A")) { auto ns = scene.get_all_nodes(); if (!ns.empty()) scene.select(ns[0]); }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Group", "Ctrl+G")) { save_undo("Group"); scene.group_selected(); }
+            if (ImGui::MenuItem("Ungroup", "Ctrl+Shift+G")) { save_undo("Ungroup"); scene.ungroup_selected(); }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Select All", "Ctrl+A")) {
+                auto ns = scene.get_all_nodes();
+                scene.multi_selection.clear();
+                for (auto* n : ns) scene.multi_selection.push_back(n);
+                if (!ns.empty()) scene.selected_node = ns[0];
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
@@ -376,6 +406,9 @@ static void draw_menu_bar() {
                 camera.focus_on(c, s);
             }
             if (ImGui::MenuItem("Toggle Grid", "G")) scene.grid_enabled = !scene.grid_enabled;
+            ImGui::Separator();
+            ImGui::MenuItem("Wireframe Mode", "W", &scene.global_wireframe);
+            ImGui::MenuItem("X-Ray Mode", "X", &scene.xray_mode);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Add")) {
@@ -432,15 +465,23 @@ static void draw_toolbar() {
     ImGui::SameLine(450);
     ImGui::Text("|");
     ImGui::SameLine();
-    if (ImGui::RadioButton("Move", selected_tool == 0)) selected_tool = 0;
+    if (ImGui::RadioButton("Move[G]", selected_tool == 0)) selected_tool = 0;
     ImGui::SameLine();
-    if (ImGui::RadioButton("Rotate", selected_tool == 1)) selected_tool = 1;
+    if (ImGui::RadioButton("Rotate[E]", selected_tool == 1)) selected_tool = 1;
     ImGui::SameLine();
-    if (ImGui::RadioButton("Scale", selected_tool == 2)) selected_tool = 2;
+    if (ImGui::RadioButton("Scale[R]", selected_tool == 2)) selected_tool = 2;
     ImGui::SameLine();
     ImGui::PushItemWidth(80);
     ImGui::DragFloat("Snap", &snap_value, 0.05f, 0.0f, 10.0f);
     ImGui::PopItemWidth();
+    ImGui::SameLine();
+    ImGui::Text("|");
+    ImGui::SameLine();
+    if (ImGui::Button(scene.global_wireframe ? "Wire[ON]" : "Wire[W]")) { scene.global_wireframe = !scene.global_wireframe; }
+    ImGui::SameLine();
+    if (ImGui::Button(scene.xray_mode ? "XRay[ON]" : "XRay[X]")) { scene.xray_mode = !scene.xray_mode; }
+    ImGui::SameLine();
+    if (ImGui::Button(scene.grid_enabled ? "Grid[ON]" : "Grid[OFF]")) { scene.grid_enabled = !scene.grid_enabled; }
     ImGui::End();
 }
 
@@ -462,12 +503,22 @@ static void draw_scene_tree() {
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
         if (scene.selected_node == node) flags |= ImGuiTreeNodeFlags_Selected;
+        bool in_multi = false;
+        for (auto* ms : scene.multi_selection) { if (ms == node) { in_multi = true; break; } }
+        if (in_multi && scene.selected_node != node) flags |= ImGuiTreeNodeFlags_Selected;
         if (!node->visible) flags |= ImGuiTreeNodeFlags_DefaultOpen;
         std::string label = node->mesh ? "[M] " : "[N] ";
         label += node->name;
+        if (node->children.size() > 0) {
+            label = "[G] " + node->name;
+        }
         ImGui::TreeNodeEx((void*)(uintptr_t)node, flags, "%s", label.c_str());
         if (ImGui::IsItemClicked()) {
-            scene.select(node);
+            if (ImGui::GetIO().KeyCtrl) {
+                scene.toggle_multi_select(node);
+            } else {
+                scene.select(node);
+            }
             strncpy(rename_buf, node->name.c_str(), sizeof(rename_buf));
         }
         if (ImGui::IsItemClicked(1)) ImGui::OpenPopup("node_menu");
@@ -481,8 +532,14 @@ static void draw_scene_tree() {
         if (ImGui::MenuItem("Lock/Unlock") && scene.selected_node) {
             scene.selected_node->locked = !scene.selected_node->locked;
         }
-        if (ImGui::MenuItem("Duplicate", "Ctrl+D")) scene.duplicate_selected();
+        if (ImGui::MenuItem("Copy", "Ctrl+C")) scene.copy_selected();
+        if (ImGui::MenuItem("Paste", "Ctrl+V")) { save_undo("Paste"); scene.paste_clipboard(); }
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D")) { save_undo("Duplicate"); scene.duplicate_selected(); }
         if (ImGui::MenuItem("Delete", "Del")) { save_undo("Delete"); scene.delete_selected(); }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Group", "Ctrl+G")) { save_undo("Group"); scene.group_selected(); }
+        if (ImGui::MenuItem("Ungroup", "Ctrl+Shift+G")) { save_undo("Ungroup"); scene.ungroup_selected(); }
+        ImGui::Separator();
         if (ImGui::MenuItem("Focus", "F") && scene.selected_node) {
             vec3 center = (scene.selected_node->get_bounding_box_min() + scene.selected_node->get_bounding_box_max()) * 0.5f;
             float size = glm::length(scene.selected_node->get_bounding_box_max() - scene.selected_node->get_bounding_box_min());
@@ -709,26 +766,29 @@ static void draw_about() {
     if (ImGui::Begin("About OCP", &show_about, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("OCP - Object Creation Project");
         ImGui::Separator();
-        ImGui::Text("Version 2.0 (C++)");
+        ImGui::Text("Version 2.2 (C++)");
         ImGui::Text("Build: %s %s", __DATE__, __TIME__);
         ImGui::Separator();
-        ImGui::TextWrapped("Professional 3D object creation tool with AI-powered\nprocedural generation.");
+        ImGui::TextWrapped("Professional 3D object creation tool with AI-powered\nprocedural generation & organic deformation.");
         ImGui::Separator();
         ImGui::TextWrapped("Created by KitariosWebStudio - KWS");
         ImGui::TextWrapped("OpenGL 3.3 Core | Dear ImGui | GLFW | GLM");
         ImGui::Separator();
         ImGui::Text("Features:");
         ImGui::BulletText("Manual primitive creation (9 types)");
-        ImGui::BulletText("35+ AI procedural scene generators");
+        ImGui::BulletText("60+ AI procedural generators with organic deformation");
         ImGui::BulletText("Bilingual prompt engine (FR/EN)");
         ImGui::BulletText("Full material editor (PBR)");
         ImGui::BulletText("Light management");
         ImGui::BulletText("OBJ/STL/PNG export");
         ImGui::BulletText("Scene save/load");
-        ImGui::BulletText("Undo/Redo system");
-        ImGui::BulletText("Keyboard shortcuts");
+        ImGui::BulletText("Undo/Redo (50 levels)");
+        ImGui::BulletText("Multi-selection, Copy/Paste, Group/Ungroup");
+        ImGui::BulletText("Wireframe & X-Ray modes");
+        ImGui::BulletText("Blender-style QWERTY tools");
         ImGui::Separator();
-        ImGui::Text("Shortcuts: Ctrl+Z/Y undo/redo, F focus, G grid, H console");
+        ImGui::Text("Tools: G=Move, E=Rotate, R=Scale, W=Wire, X=Xray");
+        ImGui::Text("Actions: Ctrl+C/V copy/paste, Ctrl+G group");
         if (ImGui::Button("OK", ImVec2(120, 0))) show_about = false;
     }
     ImGui::End();
@@ -739,6 +799,12 @@ static void draw_status_bar() {
     ImGui::SetNextWindowSize(ImVec2((float)WIN_W, 24), ImGuiCond_Always);
     ImGui::Begin("##StatusBar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::Text("%s", status_text.c_str());
+    ImGui::SameLine(300);
+    const char* tool_names[] = {"Move[G]", "Rotate[E]", "Scale[R]"};
+    ImGui::Text("| %s | Wire:%s | XRay:%s",
+        tool_names[selected_tool],
+        scene.global_wireframe ? "ON" : "OFF",
+        scene.xray_mode ? "ON" : "OFF");
     ImGui::SameLine(WIN_W - 400);
     ImGui::Text("Nodes: %d | Verts: %d | Tris: %d",
         scene.get_node_count(),
@@ -793,7 +859,7 @@ int main() {
 
     renderer.initialize(WIN_W, WIN_H);
     setup_default_scene();
-    log_message("OCP v2.0 initialized - KitariosWebStudio - KWS");
+    log_message("OCP v2.2 initialized - KitariosWebStudio - KWS");
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();

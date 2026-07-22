@@ -24,10 +24,59 @@ inline float smoothstep(float e0, float e1, float x) {
     return t * t * (3.0f - 2.0f * t);
 }
 
+// --- Proper Value Noise with Smooth Interpolation ---
+
+inline float hash_val(int x, int y) {
+    int n = x * 73856093 ^ y * 19349669;
+    n = (n ^ (n >> 13)) * 1274126177;
+    n = n ^ (n >> 16);
+    return (float)(n & 0x7FFFFFFF) / 1073741823.5f - 1.0f;
+}
+
+inline float hash_val3(int x, int y, int z) {
+    int n = x * 73856093 ^ y * 19349669 ^ z * 83492791;
+    n = (n ^ (n >> 13)) * 1274126177;
+    n = n ^ (n >> 16);
+    return (float)(n & 0x7FFFFFFF) / 1073741823.5f - 1.0f;
+}
+
 inline float noise2d(float x, float y) {
-    int n = (int)(x * 57.0f + y * 131.0f);
-    n = (n << 13) ^ n;
-    return 1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7FFFFFFF) / 1073741824.0f;
+    int ix = (int)std::floor(x);
+    int iy = (int)std::floor(y);
+    float fx = x - (float)ix;
+    float fy = y - (float)iy;
+    fx = fx * fx * (3.0f - 2.0f * fx);
+    fy = fy * fy * (3.0f - 2.0f * fy);
+    float a = hash_val(ix, iy);
+    float b = hash_val(ix + 1, iy);
+    float c = hash_val(ix, iy + 1);
+    float d = hash_val(ix + 1, iy + 1);
+    return lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
+}
+
+inline float noise3d(float x, float y, float z) {
+    int ix = (int)std::floor(x);
+    int iy = (int)std::floor(y);
+    int iz = (int)std::floor(z);
+    float fx = x - (float)ix;
+    float fy = y - (float)iy;
+    float fz = z - (float)iz;
+    fx = fx * fx * (3.0f - 2.0f * fx);
+    fy = fy * fy * (3.0f - 2.0f * fy);
+    fz = fz * fz * (3.0f - 2.0f * fz);
+    float v000 = hash_val3(ix, iy, iz);
+    float v100 = hash_val3(ix + 1, iy, iz);
+    float v010 = hash_val3(ix, iy + 1, iz);
+    float v110 = hash_val3(ix + 1, iy + 1, iz);
+    float v001 = hash_val3(ix, iy, iz + 1);
+    float v101 = hash_val3(ix + 1, iy, iz + 1);
+    float v011 = hash_val3(ix, iy + 1, iz + 1);
+    float v111 = hash_val3(ix + 1, iy + 1, iz + 1);
+    return lerp(
+        lerp(lerp(v000, v100, fx), lerp(v010, v110, fx), fy),
+        lerp(lerp(v001, v101, fx), lerp(v011, v111, fx), fy),
+        fz
+    );
 }
 
 inline float fbm(float x, float y, int octaves = 6) {
@@ -38,6 +87,28 @@ inline float fbm(float x, float y, int octaves = 6) {
         amp *= 0.5f;
     }
     return val;
+}
+
+inline float fbm3d(float x, float y, float z, int octaves = 6) {
+    float val = 0.0f, amp = 0.5f, freq = 1.0f;
+    for (int i = 0; i < octaves; i++) {
+        val += amp * noise3d(x * freq, y * freq, z * freq);
+        freq *= 2.0f;
+        amp *= 0.5f;
+    }
+    return val;
+}
+
+template<typename MeshType>
+void deform_mesh(MeshType& m, float amount, float seed) {
+    for (auto& v : m.vertices) {
+        float n = fbm3d(v.position.x * 3.0f + seed,
+                        v.position.y * 3.0f + seed * 0.7f,
+                        v.position.z * 3.0f + seed * 1.3f, 4);
+        v.position += v.normal * n * amount;
+    }
+    m.dirty = true;
+    m.compute_normals();
 }
 
 inline mat4 mat4_inverse(const mat4& m) { return glm::inverse(m); }

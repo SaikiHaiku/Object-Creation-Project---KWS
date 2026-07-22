@@ -69,6 +69,8 @@ public:
     bool grid_enabled = true;
     float grid_size = 20.0f;
     int grid_subdivisions = 20;
+    bool global_wireframe = false;
+    bool xray_mode = false;
 
     Scene();
 
@@ -80,10 +82,16 @@ public:
     int get_node_count() const;
     void update();
     void select(SceneNode* node);
+    void toggle_multi_select(SceneNode* node);
     void deselect();
     void delete_selected();
     void duplicate_selected();
     void clear();
+
+    void copy_selected();
+    void paste_clipboard();
+    void group_selected();
+    void ungroup_selected();
 
     bool raycast(const vec3& origin, const vec3& direction, SceneNode*& hit_node, float& hit_dist) const;
 
@@ -91,6 +99,7 @@ public:
     bool load_from_string(const std::string& data);
 
 private:
+    std::vector<std::unique_ptr<SceneNode>> clipboard;
     bool raycast_node(const vec3& origin, const vec3& direction,
                       SceneNode* node, float& dist) const;
 };

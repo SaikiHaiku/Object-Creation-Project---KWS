@@ -39,6 +39,7 @@ public:
 
     std::mt19937& rng();
 
+    // === ORIGINAL SCENE GENERATORS (ORGANIC REWRITE) ===
     std::vector<Part> generate_tree(float height = 3.0f);
     std::vector<Part> generate_house(float size = 1.0f);
     std::vector<Part> generate_car(float size = 1.0f);
@@ -75,19 +76,88 @@ public:
     std::vector<Part> generate_satellite(float size = 1.0f);
     std::vector<Part> generate_jewelry(float size = 1.0f);
 
+    // === NEW SCENE GENERATORS ===
+    std::vector<Part> generate_throne(float size = 1.0f);
+    std::vector<Part> generate_altar(float size = 1.0f);
+    std::vector<Part> generate_campfire(float size = 1.0f);
+    std::vector<Part> generate_crate(float size = 1.0f);
+    std::vector<Part> generate_barrel(float size = 1.0f);
+    std::vector<Part> generate_bench(float size = 1.0f);
+    std::vector<Part> generate_fountain(float size = 1.0f);
+    std::vector<Part> generate_cart(float size = 1.0f);
+    std::vector<Part> generate_lantern(float size = 1.0f);
+    std::vector<Part> generate_gun(float size = 1.0f);
+    std::vector<Part> generate_scifi_turret(float size = 1.0f);
+    std::vector<Part> generate_crystal(float size = 1.0f);
+    std::vector<Part> generate_coral(float size = 1.0f);
+    std::vector<Part> generate_butterfly(float size = 1.0f);
+    std::vector<Part> generate_cat(float size = 1.0f);
+    std::vector<Part> generate_dog(float size = 1.0f);
+    std::vector<Part> generate_bird(float size = 1.0f);
+    std::vector<Part> generate_tree_stump(float size = 1.0f);
+    std::vector<Part> generate_rock_wall(float size = 1.0f);
+    std::vector<Part> generate_grave(float size = 1.0f);
+    std::vector<Part> generate_flag(float size = 1.0f);
+    std::vector<Part> generate_bookshelf(float size = 1.0f);
+    std::vector<Part> generate_potion(float size = 1.0f);
+    std::vector<Part> generate_cave(float size = 1.0f);
+    std::vector<Part> generate_tent(float size = 1.0f);
+
 private:
     std::mt19937 rng_engine{42};
 
+    // --- Deformation Utilities ---
+    void deform_organic(Mesh& m, float amount, float seed);
+    void bend_mesh(Mesh& m, float amount, vec3 axis);
+    void taper_mesh(Mesh& m, float top_scale, float bottom_scale);
+    void add_random_detail(Mesh& m, float detail_size, int count);
+
+    // --- Organic Mesh Creators ---
+    Mesh create_organic_sphere(float radius, int seg, int rings, float seed, float bumpiness);
+    Mesh create_organic_cylinder(float r, float h, int seg, float seed, float bulge);
+    Mesh create_stone(float size, float seed = 0.0f);
+    Mesh create_log(float radius, float length, float seed = 0.0f);
+    Mesh create_leaf_cluster(float size, float seed = 0.0f);
+    Mesh create_rock(float size, float seed = 0.0f);
+    Mesh create_cloud(float size, float seed = 0.0f);
+    Mesh create_cave_entrance(float size, float seed = 0.0f);
+    Mesh create_tent_mesh(float size, float seed = 0.0f);
+    Mesh create_barrel_mesh(float size, float seed = 0.0f);
+    Mesh create_bench_mesh(float size, float seed = 0.0f);
+    Mesh create_fountain_mesh(float size, float seed = 0.0f);
+    Mesh create_cart_mesh(float size, float seed = 0.0f);
+    Mesh create_crate_mesh(float size, float seed = 0.0f);
+    Mesh create_lantern_mesh(float size, float seed = 0.0f);
+    Mesh create_gun_mesh(float size, float seed = 0.0f);
+    Mesh create_scifi_turret_mesh(float size, float seed = 0.0f);
+    Mesh create_crystal_mesh(float size, float seed = 0.0f);
+    Mesh create_coral_mesh(float size, float seed = 0.0f);
+    Mesh create_butterfly_mesh(float size, float seed = 0.0f);
+    Mesh create_cat_mesh(float size, float seed = 0.0f);
+    Mesh create_dog_mesh(float size, float seed = 0.0f);
+    Mesh create_bird_mesh(float size, float seed = 0.0f);
+    Mesh create_tree_stump_mesh(float size, float seed = 0.0f);
+    Mesh create_rock_wall_mesh(float size, float seed = 0.0f);
+    Mesh create_grave_mesh(float size, float seed = 0.0f);
+    Mesh create_flag_mesh(float size, float seed = 0.0f);
+    Mesh create_bookshelf_mesh(float size, float seed = 0.0f);
+    Mesh create_potion_mesh(float size, float seed = 0.0f);
+    Mesh create_campfire_mesh(float size, float seed = 0.0f);
+    Mesh create_throne_mesh(float size, float seed = 0.0f);
+    Mesh create_altar_mesh(float size, float seed = 0.0f);
+
+    // --- Internal Mesh Helpers ---
     Mesh create_tapered_cylinder(float r_top, float r_bot, float height, int seg = 16);
     Mesh create_pyramid_mesh(float base_size, float height, int sides = 4);
-    Mesh create_deformed_sphere(float radius, int seg = 24, int rings = 16, float deform = 0.3f);
     Mesh create_star_mesh(float size);
     Mesh create_heart_mesh(float size);
     Mesh create_skull_mesh(float size);
     Mesh create_brain_mesh(float size);
-    Mesh create_helmet_mesh(float size);
     Mesh create_l_shape(float leg1, float leg2, float thickness);
     Mesh create_ring(float outer_r, float inner_r, int segs);
+    void merge_mesh(Mesh& target, const Mesh& source, const vec3& offset);
+    void merge_mesh_transform(Mesh& target, const Mesh& source, const mat4& transform);
+    float randf();
 };
 
 class ObjectGenerator {
