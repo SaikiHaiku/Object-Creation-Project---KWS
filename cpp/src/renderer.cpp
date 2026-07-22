@@ -175,7 +175,9 @@ void Renderer::initialize(int w, int h) {
     shader_3d = compile_shader(VERT_3D, FRAG_3D);
     shader_line = compile_shader(VERT_LINE, FRAG_LINE);
     shader_grid = compile_shader(VERT_GRID, FRAG_GRID);
-    build_grid(20.0f, 20);
+    last_grid_size = 20.0f;
+    last_grid_subdiv = 20;
+    build_grid(last_grid_size, last_grid_subdiv);
     init_selection_buffers();
     init_gizmo_buffers();
 }
@@ -411,7 +413,14 @@ void Renderer::render_scene(Scene& scene, Camera& camera, int vp_x, int vp_y, in
     glClearColor(scene.background_color.r, scene.background_color.g, scene.background_color.b, scene.background_color.a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (scene.grid_enabled) render_grid(scene.grid_size, scene.grid_subdivisions, camera.get_view_matrix(), camera.get_projection_matrix());
+    if (scene.grid_enabled) {
+        if (scene.grid_size != last_grid_size || scene.grid_subdivisions != last_grid_subdiv) {
+            last_grid_size = scene.grid_size;
+            last_grid_subdiv = scene.grid_subdivisions;
+            build_grid(scene.grid_size, scene.grid_subdivisions);
+        }
+        render_grid(scene.grid_size, scene.grid_subdivisions, camera.get_view_matrix(), camera.get_projection_matrix());
+    }
 
     mat4 view = camera.get_view_matrix();
     mat4 proj = camera.get_projection_matrix();
@@ -438,7 +447,7 @@ void Renderer::render_scene(Scene& scene, Camera& camera, int vp_x, int vp_y, in
 
     for (auto& c : scene.root.children) render_node(c.get(), shader_3d, view, proj, scene.global_wireframe, scene.xray_mode);
 
-    if (scene.selected_node) render_selection_box(scene.selected_node, view, proj);
+    for (auto* sel : scene.multi_selection) render_selection_box(sel, view, proj);
 }
 
 uint32_t Renderer::read_pixel(int x, int y) {

@@ -28,6 +28,10 @@ using namespace ocp;
 
 static const char* APP_TITLE = "OCP - Object Creation Project | KitariosWebStudio - KWS";
 static int WIN_W = 1600, WIN_H = 900;
+static const int LEFT_PANEL_W = 220;
+static const int TOP_OFFSET = 54;
+static const int RIGHT_PANEL_W = 350;
+static const int BOTTOM_OFFSET = 24;
 
 static Scene scene;
 static Camera camera;
@@ -320,6 +324,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
         camera.focus_on(c, s);
     }
     else if (key == GLFW_KEY_H) show_console = !show_console;
+    else if (key == GLFW_KEY_GRAVE_ACCENT) { scene.grid_enabled = !scene.grid_enabled; status_text = scene.grid_enabled ? "Grid: ON" : "Grid: OFF"; }
     else if (key == GLFW_KEY_F1) show_about = true;
     else if (ctrl && key == GLFW_KEY_1) { selected_tool = 0; status_text = "Tool: Move"; }
     else if (ctrl && key == GLFW_KEY_2) { selected_tool = 1; status_text = "Tool: Rotate"; }
@@ -405,7 +410,7 @@ static void draw_menu_bar() {
                 float s = glm::length(scene.selected_node->get_bounding_box_max() - scene.selected_node->get_bounding_box_min());
                 camera.focus_on(c, s);
             }
-            if (ImGui::MenuItem("Toggle Grid", "G")) scene.grid_enabled = !scene.grid_enabled;
+            if (ImGui::MenuItem("Toggle Grid", "`")) scene.grid_enabled = !scene.grid_enabled;
             ImGui::Separator();
             ImGui::MenuItem("Wireframe Mode", "W", &scene.global_wireframe);
             ImGui::MenuItem("X-Ray Mode", "X", &scene.xray_mode);
@@ -873,7 +878,7 @@ int main() {
 
         double mx, my;
         glfwGetCursorPos(window, &mx, &my);
-        viewport_hovered = (mx > 220 && mx < WIN_W - 350 && my > 54 && my < WIN_H - 24);
+        viewport_hovered = (mx > LEFT_PANEL_W && mx < WIN_W - RIGHT_PANEL_W && my > TOP_OFFSET && my < WIN_H - BOTTOM_OFFSET);
 
         draw_menu_bar();
         draw_toolbar();
@@ -890,8 +895,8 @@ int main() {
 
         ImGui::Render();
 
-        int vp_x = 0, vp_y = 54;
-        int vp_w = WIN_W - 350, vp_h = WIN_H - 54 - 24;
+        int vp_x = 0, vp_y = TOP_OFFSET;
+        int vp_w = WIN_W - RIGHT_PANEL_W, vp_h = WIN_H - TOP_OFFSET - BOTTOM_OFFSET;
         renderer.render_scene(scene, camera, vp_x, vp_y, vp_w, vp_h);
 
         if (scene.selected_node) {

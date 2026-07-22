@@ -24,6 +24,8 @@ private:
     uint32_t shader_3d = 0, shader_line = 0, shader_grid = 0;
     uint32_t grid_vao = 0, grid_vbo = 0;
     int grid_vertex_count = 0;
+    float last_grid_size = 0;
+    int last_grid_subdiv = 0;
 
     struct PtrHash { size_t operator()(Mesh* p) const { return std::hash<void*>()(p); } };
     std::unordered_map<Mesh*, MeshBuffers, PtrHash> mesh_cache;

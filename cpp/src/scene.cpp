@@ -239,6 +239,7 @@ void Scene::group_selected() {
         auto ptr = std::unique_ptr<SceneNode>(node);
         group_raw->add_child(std::move(ptr));
     }
+    multi_selection.clear();
     select(group_raw);
 }
 
@@ -407,6 +408,55 @@ bool Scene::load_from_string(const std::string& data) {
                 l.type = (Light::Type)t;
                 l.enabled = e != 0;
                 lights.push_back(l);
+            }
+        }
+        else if (line.substr(0, 6) == "nodes:") {
+            std::vector<std::pair<int, SceneNode*>> parent_stack;
+            parent_stack.push_back({-1, &root});
+            SceneNode* last_node = nullptr;
+
+            while (std::getline(ss, line)) {
+                if (line.empty()) continue;
+
+                int indent = 0;
+                while (indent < (int)line.size() && line[indent] == ' ') indent++;
+                std::string trimmed = line.substr(indent);
+                int depth = indent / 2;
+
+                if (trimmed.substr(0, 5) == "node:") {
+                    while ((int)parent_stack.size() > depth + 1) parent_stack.pop_back();
+                    SceneNode* parent = parent_stack.back().second;
+
+                    auto node = std::make_unique<SceneNode>();
+                    char name_buf[128] = {};
+                    float px = 0, py = 0, pz = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1;
+                    int vis = 1;
+                    sscanf(trimmed.c_str(), "node:%[^|]|p:%f,%f,%f|r:%f,%f,%f|s:%f,%f,%f|v:%d",
+                        name_buf, &px, &py, &pz, &rx, &ry, &rz, &sx, &sy, &sz, &vis);
+                    node->name = name_buf;
+                    node->position = vec3(px, py, pz);
+                    node->rotation = vec3(rx, ry, rz);
+                    node->scale = vec3(sx, sy, sz);
+                    node->visible = vis != 0;
+                    last_node = parent->add_child(std::move(node));
+                    parent_stack.push_back({depth, last_node});
+                }
+                else if (trimmed.substr(0, 4) == "mat:" && last_node) {
+                    auto mat = std::make_unique<Material>();
+                    char hex_buf[16] = {};
+                    float m = 0, r = 0.5f, sh = 32.0f, o = 1.0f;
+                    int w = 0;
+                    sscanf(trimmed.c_str(), "mat:%[^|]|m:%f|r:%f|sh:%f|w:%d|o:%f",
+                        hex_buf, &m, &r, &sh, &w, &o);
+                    mat->set_from_hex(hex_buf);
+                    mat->metallic = m;
+                    mat->roughness = r;
+                    mat->shininess = sh;
+                    mat->wireframe = w != 0;
+                    mat->opacity = o;
+                    last_node->material = std::move(mat);
+                }
+                else break;
             }
         }
     }
