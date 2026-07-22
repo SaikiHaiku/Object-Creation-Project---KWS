@@ -23,6 +23,9 @@
 #include <filesystem>
 #include <stack>
 #include <deque>
+#include <fstream>
+#include <sstream>
+#include <algorithm>
 
 using namespace ocp;
 
@@ -45,6 +48,7 @@ static bool show_about = false;
 static bool show_console = false;
 static bool show_settings = false;
 static bool show_light_panel = false;
+static bool show_resource_browser = false;
 static char scene_search[128] = "";
 static char rename_buf[128] = "";
 static bool renaming = false;
@@ -431,6 +435,7 @@ static void draw_menu_bar() {
             if (ImGui::MenuItem("Console", "H")) show_console = !show_console;
             if (ImGui::MenuItem("Lights")) show_light_panel = !show_light_panel;
             if (ImGui::MenuItem("Settings")) show_settings = !show_settings;
+            if (ImGui::MenuItem("Resource Library", "R")) show_resource_browser = !show_resource_browser;
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help")) {
@@ -741,6 +746,198 @@ static void draw_console() {
     ImGui::End();
 }
 
+struct ResourceLibrary {
+    bool loaded = false;
+    std::string base_path;
+    std::vector<std::string> texture_categories;
+    std::map<std::string, std::vector<std::string>> textures_by_cat;
+    std::vector<std::string> hdri_files;
+    std::vector<std::string> material_files;
+    std::vector<std::string> scene_files;
+    std::vector<std::string> brush_files;
+    std::vector<std::string> model_files;
+    int selected_tab = 0;
+    int selected_category = 0;
+    int selected_item = -1;
+    char search_buf[128] = "";
+};
+
+static ResourceLibrary resource_lib;
+
+static void discover_resources() {
+    namespace fs = std::filesystem;
+    char exe_path[MAX_PATH] = {};
+    GetModuleFileNameA(nullptr, exe_path, MAX_PATH);
+    fs::path exe_dir = fs::path(exe_path).parent_path();
+    resource_lib.base_path = (exe_dir / "resources").string();
+
+    if (!fs::exists(resource_lib.base_path)) {
+        fs::path alt = fs::path("E:\\Object Creation Project - KWS") / "resources";
+        if (fs::exists(alt)) {
+            resource_lib.base_path = alt.string();
+        } else {
+            log_message("Resource library not found at: " + resource_lib.base_path);
+            return;
+        }
+    }
+
+    fs::path tex_dir = fs::path(resource_lib.base_path) / "textures";
+    if (fs::exists(tex_dir)) {
+        for (auto& cat : fs::directory_iterator(tex_dir)) {
+            if (cat.is_directory()) {
+                std::string cat_name = cat.path().filename().string();
+                resource_lib.texture_categories.push_back(cat_name);
+                std::vector<std::string> files;
+                for (auto& f : fs::directory_iterator(cat.path())) {
+                    if (f.path().extension() == ".png") {
+                        files.push_back(f.path().filename().string());
+                    }
+                }
+                std::sort(files.begin(), files.end());
+                resource_lib.textures_by_cat[cat_name] = files;
+            }
+        }
+        std::sort(resource_lib.texture_categories.begin(), resource_lib.texture_categories.end());
+    }
+
+    auto collect = [&](const std::string& subdir, std::vector<std::string>& out, const std::string& ext) {
+        fs::path dir = fs::path(resource_lib.base_path) / subdir;
+        if (fs::exists(dir)) {
+            for (auto& f : fs::directory_iterator(dir)) {
+                if (f.path().extension() == ext) {
+                    out.push_back(f.path().filename().string());
+                }
+            }
+            std::sort(out.begin(), out.end());
+        }
+    };
+    collect("hdri", resource_lib.hdri_files, ".hdr");
+    collect("materials", resource_lib.material_files, ".json");
+    collect("scenes", resource_lib.scene_files, ".json");
+    collect("brushes", resource_lib.brush_files, ".png");
+    collect("models", resource_lib.model_files, ".ocpm");
+
+    int total = 0;
+    for (auto& kv : resource_lib.textures_by_cat) total += (int)kv.second.size();
+    total += (int)resource_lib.hdri_files.size();
+    total += (int)resource_lib.material_files.size();
+    total += (int)resource_lib.scene_files.size();
+    total += (int)resource_lib.brush_files.size();
+    total += (int)resource_lib.model_files.size();
+
+    resource_lib.loaded = true;
+    log_message("Resource library loaded: " + std::to_string(resource_lib.texture_categories.size()) + " texture categories, " +
+                std::to_string(total) + " total assets from " + resource_lib.base_path);
+}
+
+static void draw_resource_browser() {
+    if (!show_resource_browser) return;
+    ImGui::SetNextWindowSize(ImVec2(800, 500), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Resource Library - KitariosWebStudio", &show_resource_browser)) {
+        if (!resource_lib.loaded) {
+            if (ImGui::Button("Scan for Resources")) {
+                discover_resources();
+            }
+            ImGui::TextWrapped("Click to scan for the bundled resource library (textures, HDRIs, materials, scenes, models).");
+        } else {
+            ImGui::InputText("Search", resource_lib.search_buf, sizeof(resource_lib.search_buf));
+            ImGui::Separator();
+
+            const char* tabs[] = {"Textures", "HDRI", "Materials", "Scenes", "Models", "Brushes"};
+            int tab_count = 6;
+            for (int i = 0; i < tab_count; i++) {
+                if (i > 0) ImGui::SameLine();
+                if (ImGui::RadioButton(tabs[i], resource_lib.selected_tab == i)) {
+                    resource_lib.selected_tab = i;
+                    resource_lib.selected_item = -1;
+                    resource_lib.selected_category = 0;
+                }
+            }
+            ImGui::Separator();
+
+            if (resource_lib.selected_tab == 0) {
+                ImGui::BeginChild("CatList", ImVec2(150, 0), ImGuiChildFlags_Borders);
+                for (int i = 0; i < (int)resource_lib.texture_categories.size(); i++) {
+                    bool sel = (resource_lib.selected_category == i);
+                    if (ImGui::Selectable(resource_lib.texture_categories[i].c_str(), sel)) {
+                        resource_lib.selected_category = i;
+                        resource_lib.selected_item = -1;
+                    }
+                }
+                ImGui::EndChild();
+                ImGui::SameLine();
+                ImGui::BeginChild("ItemList", ImVec2(0, 0), ImGuiChildFlags_Borders);
+                if (resource_lib.selected_category < (int)resource_lib.texture_categories.size()) {
+                    std::string cat = resource_lib.texture_categories[resource_lib.selected_category];
+                    auto it = resource_lib.textures_by_cat.find(cat);
+                    if (it != resource_lib.textures_by_cat.end()) {
+                        std::string search = resource_lib.search_buf;
+                        std::transform(search.begin(), search.end(), search.begin(), ::tolower);
+                        for (int i = 0; i < (int)it->second.size(); i++) {
+                            std::string fname = it->second[i];
+                            if (!search.empty()) {
+                                std::string lower = fname;
+                                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                                if (lower.find(search) == std::string::npos) continue;
+                            }
+                            bool sel = (resource_lib.selected_item == i);
+                            if (ImGui::Selectable(fname.c_str(), sel)) {
+                                resource_lib.selected_item = i;
+                            }
+                            if (ImGui::IsItemHovered()) {
+                                ImGui::BeginTooltip();
+                                ImGui::Text("%s / %s", cat.c_str(), fname.c_str());
+                                ImGui::Text("Path: %s/textures/%s/%s", resource_lib.base_path.c_str(), cat.c_str(), fname.c_str());
+                                ImGui::EndTooltip();
+                            }
+                        }
+                    }
+                }
+                ImGui::EndChild();
+            } else {
+                std::vector<std::string>* items = nullptr;
+                const char* label = "";
+                switch (resource_lib.selected_tab) {
+                    case 1: items = &resource_lib.hdri_files; label = "HDRI Environment Maps"; break;
+                    case 2: items = &resource_lib.material_files; label = "Material Presets"; break;
+                    case 3: items = &resource_lib.scene_files; label = "Template Scenes"; break;
+                    case 4: items = &resource_lib.model_files; label = "3D Mesh Templates"; break;
+                    case 5: items = &resource_lib.brush_files; label = "Brush Presets"; break;
+                }
+                ImGui::Text("%s (%d items)", label, items ? (int)items->size() : 0);
+                ImGui::Separator();
+                if (items) {
+                    ImGui::BeginChild("BrowseList", ImVec2(0, 0), ImGuiChildFlags_Borders);
+                    std::string search = resource_lib.search_buf;
+                    std::transform(search.begin(), search.end(), search.begin(), ::tolower);
+                    for (int i = 0; i < (int)items->size(); i++) {
+                        std::string fname = (*items)[i];
+                        if (!search.empty()) {
+                            std::string lower = fname;
+                            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                            if (lower.find(search) == std::string::npos) continue;
+                        }
+                        bool sel = (resource_lib.selected_item == i);
+                        if (ImGui::Selectable(fname.c_str(), sel)) {
+                            resource_lib.selected_item = i;
+                        }
+                    }
+                    ImGui::EndChild();
+                }
+            }
+
+            ImGui::Separator();
+            int total_items = 0;
+            for (auto& kv : resource_lib.textures_by_cat) total_items += (int)kv.second.size();
+            total_items += (int)resource_lib.hdri_files.size() + (int)resource_lib.material_files.size();
+            total_items += (int)resource_lib.scene_files.size() + (int)resource_lib.model_files.size();
+            total_items += (int)resource_lib.brush_files.size();
+            ImGui::Text("Total: %d assets | Path: %s", total_items, resource_lib.base_path.c_str());
+        }
+    }
+    ImGui::End();
+}
+
 static void draw_settings() {
     if (!show_settings) return;
     ImGui::SetNextWindowSize(ImVec2(300, 250), ImGuiCond_FirstUseEver);
@@ -864,6 +1061,7 @@ int main() {
 
     renderer.initialize(WIN_W, WIN_H);
     setup_default_scene();
+    discover_resources();
     log_message("OCP v2.2 initialized - KitariosWebStudio - KWS");
 
     while (!glfwWindowShouldClose(window)) {
@@ -889,6 +1087,7 @@ int main() {
         draw_console();
         draw_settings();
         draw_about();
+        draw_resource_browser();
         draw_status_bar();
 
         scene.update();

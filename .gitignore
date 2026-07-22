@@ -28,3 +28,6 @@ Thumbs.db
 *.o
 *.dll
 test.cpp
+
+# Generated resources (use generate_assets.py to rebuild)
+resources/
