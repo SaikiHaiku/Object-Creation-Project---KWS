@@ -584,7 +584,10 @@ int Mesh::get_triangle_count() const {
 
 int Mesh::get_index_count() const {
     int count = 0;
-    for (auto& f : faces) count += (int)f.vertices.size();
+    for (auto& f : faces) {
+        if (f.vertices.size() >= 3)
+            count += ((int)f.vertices.size() - 2) * 3;
+    }
     return count;
 }
 
@@ -645,8 +648,15 @@ void Mesh::rebuild_cache() {
         cached_vertex_data.push_back(v.color.b);
         cached_vertex_data.push_back(v.color.a);
     }
-    for (auto& f : faces)
-        for (auto& vi : f.vertices) cached_index_data.push_back(vi);
+    for (auto& f : faces) {
+        if (f.vertices.size() < 3) continue;
+        uint32_t v0 = f.vertices[0];
+        for (size_t i = 1; i + 1 < f.vertices.size(); ++i) {
+            cached_index_data.push_back(v0);
+            cached_index_data.push_back(f.vertices[i]);
+            cached_index_data.push_back(f.vertices[i + 1]);
+        }
+    }
     dirty = false;
 }
 
