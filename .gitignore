@@ -31,3 +31,18 @@ test.cpp
 
 # Generated resources (use generate_assets.py to rebuild)
 resources/
+
+# Build tools and temp files
+7z/
+installer_staging/
+*.7z
+*.nsi
+sfx_config.txt
+upload_release.py
+build_installer.py
+build_log.txt
+checksums-*.txt
+imgui.ini
+OCP-v2.0-CPP.zip
+OCP-v2.1-CPP.zip
+OCP-v2.2-*

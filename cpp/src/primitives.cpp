@@ -58,31 +58,37 @@ Mesh create_sphere(float radius, int segments, int rings) {
 Mesh create_cylinder(float radius, float height, int segments) {
     Mesh m; m.name = "Cylinder";
     float hh = height * 0.5f;
+
+    uint32_t top_center = m.add_vertex(vec3(0, hh, 0), vec3(0, 1, 0), vec2(0.5f, 0.5f));
+    uint32_t bot_center = m.add_vertex(vec3(0, -hh, 0), vec3(0, -1, 0), vec2(0.5f, 0.5f));
+
+    uint32_t top_ring = (uint32_t)m.vertices.size();
+    uint32_t bot_ring = top_ring + (uint32_t)(segments + 1);
+    uint32_t side_top = bot_ring + (uint32_t)(segments + 1);
+    uint32_t side_bot = side_top + (uint32_t)(segments + 1);
+
     for (int i = 0; i <= segments; i++) {
         float theta = 2.0f * (float)M_PI * i / segments;
         float ct = cosf(theta), st = sinf(theta);
-        vec3 pos(ct * radius, 0, st * radius);
-        vec3 side_nrm(ct, 0, st);
-        vec2 uv((float)i / segments, 0);
-        m.add_vertex(vec3(ct * radius, hh, st * radius), vec3(0, 1, 0), uv);
-        m.add_vertex(vec3(ct * radius, -hh, st * radius), vec3(0, -1, 0), uv);
-        m.add_vertex(pos, side_nrm, uv);
-        m.add_vertex(vec3(ct * radius, -hh, st * radius), side_nrm, uv);
+        float u = (float)i / segments;
+        vec3 radial(ct, 0, st);
+
+        m.add_vertex(vec3(ct * radius, hh, st * radius), vec3(0, 1, 0), vec2(u, 1));
+        m.add_vertex(vec3(ct * radius, -hh, st * radius), vec3(0, -1, 0), vec2(u, 0));
+        m.add_vertex(vec3(ct * radius, hh, st * radius), radial, vec2(u, 1));
+        m.add_vertex(vec3(ct * radius, -hh, st * radius), radial, vec2(u, 0));
     }
+
     for (int i = 0; i < segments; i++) {
-        int b = i * 4;
-        m.add_face({(uint32_t)b, (uint32_t)(b + 4), (uint32_t)(b + 5), (uint32_t)(b + 1)});
-        m.add_face({(uint32_t)(b + 2), (uint32_t)(b + 3), (uint32_t)(b + 7), (uint32_t)(b + 6)});
+        m.add_face({top_center, top_ring + (uint32_t)i, top_ring + (uint32_t)(i + 1)});
+        m.add_face({bot_center, bot_ring + (uint32_t)(i + 1), bot_ring + (uint32_t)i});
+        uint32_t st_i = side_top + (uint32_t)i;
+        uint32_t st_i1 = side_top + (uint32_t)(i + 1);
+        uint32_t sb_i = side_bot + (uint32_t)i;
+        uint32_t sb_i1 = side_bot + (uint32_t)(i + 1);
+        m.add_face({st_i, st_i1, sb_i1, sb_i});
     }
-    uint32_t top_center = (uint32_t)m.vertices.size();
-    m.add_vertex(vec3(0, hh, 0), vec3(0, 1, 0));
-    uint32_t bot_center = (uint32_t)m.vertices.size();
-    m.add_vertex(vec3(0, -hh, 0), vec3(0, -1, 0));
-    for (int i = 0; i < segments; i++) {
-        int t0 = i * 4, t1 = ((i + 1) % (segments + 1)) * 4;
-        m.add_face({top_center, (uint32_t)t0, (uint32_t)t1});
-        m.add_face({bot_center, (uint32_t)(t1 + 1), (uint32_t)(t0 + 1)});
-    }
+
     m.compute_normals();
     return m;
 }
@@ -101,7 +107,7 @@ Mesh create_cone(float radius, float height, int segments) {
     }
     for (int i = 0; i < segments; i++) {
         m.add_face({tip, (uint32_t)(i + 2), (uint32_t)(i + 3)});
-        m.add_face({center, (uint32_t)(i + 4), (uint32_t)(i + 3)});
+        m.add_face({center, (uint32_t)(i + 3), (uint32_t)(i + 2)});
     }
     m.compute_normals();
     return m;
@@ -249,10 +255,10 @@ Mesh create_ico_sphere(float radius, int subdivisions) {
 const std::map<std::string, PrimitiveCreator>& get_primitive_creators() {
     static std::map<std::string, PrimitiveCreator> creators = {
         {"cube", [](float s){ return create_cube(s); }},
-        {"sphere", [](float s){ return create_sphere(s * 0.5f); }},
-        {"cylinder", [](float s){ return create_cylinder(s * 0.5f, s); }},
-        {"cone", [](float s){ return create_cone(s * 0.5f, s); }},
-        {"torus", [](float s){ return create_torus(s * 0.4f, s * 0.15f); }},
+        {"sphere", [](float s){ return create_sphere(s * 0.5f, 64, 32); }},
+        {"cylinder", [](float s){ return create_cylinder(s * 0.5f, s, 48); }},
+        {"cone", [](float s){ return create_cone(s * 0.5f, s, 48); }},
+        {"torus", [](float s){ return create_torus(s * 0.4f, s * 0.15f, 48, 24); }},
         {"plane", [](float s){ return create_plane(s * 2.0f); }},
         {"torus_knot", [](float s){ return create_torus_knot(2, 3, s * 0.5f, s * 0.08f); }},
         {"ico_sphere", [](float s){ return create_ico_sphere(s * 0.5f); }},

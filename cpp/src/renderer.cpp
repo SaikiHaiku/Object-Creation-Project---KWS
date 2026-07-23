@@ -123,8 +123,18 @@ void main() {
         Lo += (kD * albedo / PI + spec) * radiance * NdL;
     }
     vec3 up = vec3(0.0, 1.0, 0.0);
-    float ao = 0.5 + 0.5 * dot(N, up);
-    vec3 ambient = vec3(0.03) * albedo * ao;
+    vec3 skyColor = vec3(0.15, 0.18, 0.25);
+    vec3 groundColor = vec3(0.08, 0.06, 0.05);
+    float hemi = dot(N, up) * 0.5 + 0.5;
+    vec3 hemiAmbient = mix(groundColor, skyColor, hemi);
+    vec3 ambient = hemiAmbient * albedo * 0.35;
+    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    ambient *= mix(1.0, 0.6, fresnel * 0.5);
+    vec3 R = reflect(-V, N);
+    float envMip = rough * 4.0;
+    vec3 envColor = mix(skyColor, vec3(0.5), 0.3) * (1.0 - metal * 0.7);
+    vec3 envSpec = envColor * F0 * 0.15 * (1.0 - rough);
+    Lo += envSpec * (1.0 - metal * 0.3);
     vec3 color = ambient + Lo;
     color = acesToneMap(color);
     color = pow(color, vec3(1.0 / 2.2));
