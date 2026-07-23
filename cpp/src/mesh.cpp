@@ -1,4 +1,5 @@
 #include "mesh.h"
+#include "bmesh.h"
 #include <cmath>
 #include <map>
 #include <set>
@@ -926,6 +927,64 @@ Mesh Mesh::create_hemisphere(float radius, int segments) {
         }
     m.compute_normals(true);
     return m;
+}
+
+void Mesh::bmesh_from_mesh(BMesh& bm) const {
+    bm.clear();
+    std::vector<BMVert*> bverts(vertices.size());
+    for (size_t i = 0; i < vertices.size(); ++i) {
+        BMVert* v = bm.vert_add(vertices[i].position);
+        v->no = vertices[i].normal;
+        v->uv = vertices[i].uv;
+        v->color = vertices[i].color;
+        bverts[i] = v;
+    }
+    for (auto& f : faces) {
+        if (f.vertices.size() < 3) continue;
+        std::vector<BMVert*> fverts;
+        for (auto vi : f.vertices) {
+            if (vi < (uint32_t)bverts.size()) fverts.push_back(bverts[vi]);
+        }
+        if (fverts.size() >= 3) {
+            BMFace* bf = bm.face_add(fverts);
+            if (bf) bf->no = f.normal;
+        }
+    }
+    bm.recalc_all_normals();
+}
+
+void Mesh::mesh_from_bmesh(const BMesh& bm) {
+    vertices.clear();
+    faces.clear();
+    cached_vertex_data.clear();
+    cached_index_data.clear();
+    vertices.reserve(bm.vert_count);
+    for (int i = 0; i < bm.vert_count; ++i) {
+        BMVert* v = bm.verts[i];
+        Vertex vert;
+        vert.position = v->co;
+        vert.normal = v->no;
+        vert.uv = v->uv;
+        vert.color = v->color;
+        vertices.push_back(vert);
+    }
+    std::unordered_map<BMVert*, uint32_t> vert_index;
+    for (int i = 0; i < bm.vert_count; ++i) {
+        vert_index[bm.verts[i]] = (uint32_t)i;
+    }
+    faces.reserve(bm.face_count);
+    for (int i = 0; i < bm.face_count; ++i) {
+        BMFace* f = bm.faces[i];
+        Face face;
+        face.normal = f->no;
+        face.vertices.reserve(f->len);
+        for (int j = 0; j < f->len; ++j) {
+            auto it = vert_index.find(f->verts[j]);
+            if (it != vert_index.end()) face.vertices.push_back(it->second);
+        }
+        if (face.vertices.size() >= 3) faces.push_back(face);
+    }
+    dirty = true;
 }
 
 } // namespace ocp

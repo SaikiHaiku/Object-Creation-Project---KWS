@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "bmesh.h"
 #include <glad/gl.h>
 #include <cstdio>
 #include <cstring>
@@ -332,6 +333,14 @@ void Renderer::initialize(int w, int h) {
     glGenVertexArrays(1, &gizmo_vao);
     glGenBuffers(1, &gizmo_vbo);
     gizmo_vertex_count = 0;
+
+    glGenVertexArrays(1, &edit_vao);
+    glGenBuffers(1, &edit_vbo);
+    edit_vertex_count = 0;
+
+    glGenVertexArrays(1, &sculpt_cursor_vao);
+    glGenBuffers(1, &sculpt_cursor_vbo);
+    sculpt_cursor_vertex_count = 0;
 
     glGenFramebuffers(1, &outline_fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, outline_fbo);
@@ -893,12 +902,153 @@ void Renderer::cleanup() {
     glDeleteBuffers(1, &grid_vbo); glDeleteVertexArrays(1, &grid_vao);
     glDeleteBuffers(1, &sel_vbo); glDeleteVertexArrays(1, &sel_vao);
     glDeleteBuffers(1, &gizmo_vbo); glDeleteVertexArrays(1, &gizmo_vao);
+    glDeleteBuffers(1, &edit_vbo); glDeleteVertexArrays(1, &edit_vao);
+    glDeleteBuffers(1, &sculpt_cursor_vbo); glDeleteVertexArrays(1, &sculpt_cursor_vao);
     if (outline_fbo) glDeleteFramebuffers(1, &outline_fbo);
     if (outline_tex) glDeleteTextures(1, &outline_tex);
     for (auto& [k, mb] : mesh_cache) {
         glDeleteBuffers(1, &mb.vbo); glDeleteBuffers(1, &mb.ebo); glDeleteVertexArrays(1, &mb.vao);
     }
     mesh_cache.clear();
+}
+
+void Renderer::render_edit_overlays(const BMesh& bm, const mat4& model, const mat4& view, const mat4& proj,
+                                    int select_mode, const Camera& camera) {
+    mat4 mvp = proj * view * model;
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+
+    if (select_mode == 0) {
+        std::vector<float> data;
+        float pt_size = std::max(3.0f, 6.0f / glm::length(camera.position - camera.target));
+        for (int i = 0; i < bm.vert_count; ++i) {
+            BMVert* v = bm.verts[i];
+            if (v->hide) continue;
+            vec4 wp = model * vec4(v->co, 1.0f);
+            float r = v->select ? 1.0f : 0.2f;
+            float g = v->select ? 0.5f : 0.6f;
+            float b = v->select ? 0.0f : 1.0f;
+            data.insert(data.end(), {wp.x, wp.y, wp.z, r, g, b, 1.0f});
+        }
+        if (!data.empty()) {
+            edit_vertex_count = (int)data.size() / 7;
+            glBindVertexArray(edit_vao);
+            glBindBuffer(GL_ARRAY_BUFFER, edit_vbo);
+            glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_DYNAMIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+            glEnableVertexAttribArray(1);
+            use_shader(shader_line);
+            set_mat4(shader_line, "uMVP", mat4(1.0f));
+            glPointSize(pt_size);
+            glDrawArrays(GL_POINTS, 0, edit_vertex_count);
+            glBindVertexArray(0);
+            draw_calls++;
+        }
+    }
+
+    if (select_mode == 0 || select_mode == 1) {
+        std::vector<float> data;
+        for (int i = 0; i < bm.edge_count; ++i) {
+            BMEdge* e = bm.edges[i];
+            if (e->hide) continue;
+            if (e->v1->hide || e->v2->hide) continue;
+            vec4 p1 = model * vec4(e->v1->co, 1.0f);
+            vec4 p2 = model * vec4(e->v2->co, 1.0f);
+            float r = e->select ? 1.0f : 0.3f;
+            float g = e->select ? 0.5f : 0.5f;
+            float b = e->select ? 0.0f : 0.7f;
+            float a = e->select ? 1.0f : 0.5f;
+            data.insert(data.end(), {p1.x, p1.y, p1.z, r, g, b, a});
+            data.insert(data.end(), {p2.x, p2.y, p2.z, r, g, b, a});
+        }
+        if (!data.empty()) {
+            edit_vertex_count = (int)data.size() / 7;
+            glBindVertexArray(edit_vao);
+            glBindBuffer(GL_ARRAY_BUFFER, edit_vbo);
+            glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_DYNAMIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+            glEnableVertexAttribArray(1);
+            use_shader(shader_line);
+            set_mat4(shader_line, "uMVP", mat4(1.0f));
+            glLineWidth(1.5f);
+            glDrawArrays(GL_LINES, 0, edit_vertex_count);
+            glLineWidth(1.0f);
+            glBindVertexArray(0);
+            draw_calls++;
+        }
+    }
+
+    if (select_mode == 2) {
+        std::vector<float> data;
+        for (int i = 0; i < bm.face_count; ++i) {
+            BMFace* f = bm.faces[i];
+            if (f->hide) continue;
+            if (!f->select) continue;
+            for (int j = 0; j < f->len; ++j) {
+                int k = (j + 1) % f->len;
+                vec4 p1 = model * vec4(f->verts[j]->co, 1.0f);
+                vec4 p2 = model * vec4(f->verts[k]->co, 1.0f);
+                data.insert(data.end(), {p1.x, p1.y, p1.z, 1.0f, 0.5f, 0.0f, 1.0f});
+                data.insert(data.end(), {p2.x, p2.y, p2.z, 1.0f, 0.5f, 0.0f, 1.0f});
+            }
+        }
+        if (!data.empty()) {
+            edit_vertex_count = (int)data.size() / 7;
+            glBindVertexArray(edit_vao);
+            glBindBuffer(GL_ARRAY_BUFFER, edit_vbo);
+            glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_DYNAMIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+            glEnableVertexAttribArray(1);
+            use_shader(shader_line);
+            set_mat4(shader_line, "uMVP", mat4(1.0f));
+            glLineWidth(2.0f);
+            glDrawArrays(GL_LINES, 0, edit_vertex_count);
+            glLineWidth(1.0f);
+            glBindVertexArray(0);
+            draw_calls++;
+        }
+    }
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+}
+
+void Renderer::render_sculpt_cursor(const vec3& world_pos, float radius, const mat4& view, const mat4& proj) {
+    std::vector<float> data;
+    int segs = 64;
+    for (int i = 0; i < segs; ++i) {
+        float a0 = (float)i / segs * 2.0f * (float)M_PI;
+        float a1 = (float)(i + 1) / segs * 2.0f * (float)M_PI;
+        vec3 p0 = world_pos + vec3(cosf(a0) * radius, 0.0f, sinf(a0) * radius);
+        vec3 p1 = world_pos + vec3(cosf(a1) * radius, 0.0f, sinf(a1) * radius);
+        data.insert(data.end(), {p0.x, p0.y, p0.z, 0.0f, 1.0f, 0.5f, 0.8f});
+        data.insert(data.end(), {p1.x, p1.y, p1.z, 0.0f, 1.0f, 0.5f, 0.8f});
+    }
+    if (data.empty()) return;
+    sculpt_cursor_vertex_count = (int)data.size() / 7;
+    glBindVertexArray(sculpt_cursor_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, sculpt_cursor_vbo);
+    glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glDisable(GL_DEPTH_TEST);
+    use_shader(shader_line);
+    set_mat4(shader_line, "uMVP", proj * view);
+    glLineWidth(2.0f);
+    glDrawArrays(GL_LINES, 0, sculpt_cursor_vertex_count);
+    glLineWidth(1.0f);
+    glBindVertexArray(0);
+    glEnable(GL_DEPTH_TEST);
+    draw_calls++;
 }
 
 } // namespace ocp

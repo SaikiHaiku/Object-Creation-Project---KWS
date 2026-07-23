@@ -16,6 +16,9 @@
 #include "ai_engine.h"
 #include "exporters.h"
 #include "types.h"
+#include "bmesh.h"
+#include "edit_tools.h"
+#include "sculpt_tools.h"
 
 #include <cstdio>
 #include <string>
@@ -75,6 +78,17 @@ static bool local_space_mode = true;
 
 static std::deque<std::string> ai_prompt_history;
 static const int MAX_AI_HISTORY = 20;
+
+enum EditMode { MODE_OBJECT = 0, MODE_EDIT = 1, MODE_SCULPT = 2 };
+static EditMode current_mode = MODE_OBJECT;
+static std::map<SceneNode*, BMesh> edit_bmeshes;
+static SceneNode* edit_node = nullptr;
+static int edit_select_mode = 0;
+static int edit_tool = 0;
+static sculpt::BrushSettings brush_settings;
+static vec3 sculpt_hit_pos;
+static bool sculpt_hit_valid = false;
+static bool sculpt_stroke_active = false;
 
 static double last_frame_time = 0.0;
 static float current_fps = 0.0;
@@ -303,6 +317,61 @@ static void remove_modifier_from_node(SceneNode* node, int index) {
     log_message("Removed modifier");
 }
 
+static void exit_edit_mode() {
+    if (edit_node && current_mode == MODE_EDIT) {
+        auto it = edit_bmeshes.find(edit_node);
+        if (it != edit_bmeshes.end()) {
+            edit_node->mesh->mesh_from_bmesh(it->second);
+            renderer.invalidate_mesh(edit_node->mesh.get());
+            edit_bmeshes.erase(it);
+        }
+        log_message("Exited edit mode: " + edit_node->name);
+    }
+    edit_node = nullptr;
+    current_mode = MODE_OBJECT;
+}
+
+static void exit_sculpt_mode() {
+    if (edit_node && current_mode == MODE_SCULPT) {
+        auto it = edit_bmeshes.find(edit_node);
+        if (it != edit_bmeshes.end()) {
+            edit_node->mesh->mesh_from_bmesh(it->second);
+            renderer.invalidate_mesh(edit_node->mesh.get());
+            edit_bmeshes.erase(it);
+        }
+        log_message("Exited sculpt mode: " + edit_node->name);
+    }
+    edit_node = nullptr;
+    current_mode = MODE_OBJECT;
+}
+
+static void enter_edit_mode(SceneNode* node) {
+    if (!node || !node->mesh) return;
+    if (edit_node == node && current_mode == MODE_EDIT) return;
+    exit_edit_mode();
+    edit_node = node;
+    edit_bmeshes[node] = BMesh();
+    node->mesh->bmesh_from_mesh(edit_bmeshes[node]);
+    edit_select_mode = 0;
+    edit_tool = 0;
+    current_mode = MODE_EDIT;
+    status_text = "Edit Mode: " + node->name;
+    log_message("Entered edit mode: " + node->name);
+}
+
+static void enter_sculpt_mode(SceneNode* node) {
+    if (!node || !node->mesh) return;
+    if (edit_node == node && current_mode == MODE_SCULPT) return;
+    exit_edit_mode();
+    edit_node = node;
+    edit_bmeshes[node] = BMesh();
+    node->mesh->bmesh_from_mesh(edit_bmeshes[node]);
+    brush_settings = sculpt::BrushSettings();
+    current_mode = MODE_SCULPT;
+    status_text = "Sculpt Mode: " + node->name;
+    log_message("Entered sculpt mode: " + node->name);
+}
+
 static void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (action == GLFW_PRESS) {
         if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
@@ -319,9 +388,85 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
             if (mods & GLFW_MOD_ALT) {
                 mouse_orbiting = true;
                 alt_held_for_orbit = true;
+            } else if (current_mode == MODE_EDIT && viewport_hovered && edit_node) {
+                double mx2, my2; glfwGetCursorPos(w, &mx2, &my2);
+                vec3 origin, dir;
+                camera.screen_to_ray((float)mx2, (float)my2, (float)WIN_W, (float)WIN_H, origin, dir);
+                auto it = edit_bmeshes.find(edit_node);
+                if (it != edit_bmeshes.end()) {
+                    BMesh& bm = it->second;
+                    if (edit_select_mode == 0) {
+                        float best_dist = 1e10f;
+                        BMVert* best_v = bm.vert_find_nearest(vec3(0), 1e10f);
+                        for (int i = 0; i < bm.vert_count; ++i) {
+                            BMVert* v = bm.verts[i];
+                            if (v->hide) continue;
+                            vec3 wp = edit_node->get_world_matrix() * vec4(v->co, 1.0f);
+                            vec3 to = wp - origin;
+                            float t = glm::dot(to, dir);
+                            if (t < 0) continue;
+                            vec3 closest = origin + dir * t;
+                            float d = glm::length(wp - closest);
+                            if (d < 0.15f && t < best_dist) { best_dist = t; best_v = v; }
+                        }
+                        if (best_v && best_dist < 1e10f) {
+                            if (mods & GLFW_MOD_CONTROL) best_v->select = !best_v->select;
+                            else { bm.select_all(false); best_v->select = true; }
+                            status_text = "Selected vertex " + std::to_string(best_v->index);
+                        } else if (!(mods & GLFW_MOD_CONTROL)) {
+                            bm.select_all(false);
+                        }
+                    } else if (edit_select_mode == 1) {
+                        float best_dist = 1e10f;
+                        BMEdge* best_e = nullptr;
+                        for (int i = 0; i < bm.edge_count; ++i) {
+                            BMEdge* e = bm.edges[i];
+                            if (e->hide) continue;
+                            vec3 p1 = edit_node->get_world_matrix() * vec4(e->v1->co, 1.0f);
+                            vec3 p2 = edit_node->get_world_matrix() * vec4(e->v2->co, 1.0f);
+                            vec3 edge_vec = p2 - p1;
+                            float t = glm::dot(origin - p1, edge_vec) / glm::dot(edge_vec, edge_vec);
+                            t = std::clamp(t, 0.0f, 1.0f);
+                            vec3 closest = p1 + edge_vec * t;
+                            float d = glm::length(origin + dir * glm::dot(closest - origin, dir) - closest);
+                            if (d < 0.12f) { best_e = e; break; }
+                        }
+                        if (best_e) {
+                            if (mods & GLFW_MOD_CONTROL) best_e->select = !best_e->select;
+                            else { bm.select_all(false); best_e->select = true; }
+                            status_text = "Selected edge " + std::to_string(best_e->index);
+                        } else if (!(mods & GLFW_MOD_CONTROL)) {
+                            bm.select_all(false);
+                        }
+                    } else {
+                        for (int i = 0; i < bm.face_count; ++i) {
+                            BMFace* f = bm.faces[i];
+                            if (f->hide) continue;
+                            vec3 fc(0);
+                            for (int j = 0; j < f->len; ++j)
+                                fc += vec3(edit_node->get_world_matrix() * vec4(f->verts[j]->co, 1.0f));
+                            fc /= (float)f->len;
+                            vec3 fn = f->no;
+                            float denom = glm::dot(dir, fn);
+                            if (std::abs(denom) < 1e-6f) continue;
+                            float t = glm::dot(fc - origin, fn) / denom;
+                            if (t < 0) continue;
+                            vec3 hit = origin + dir * t;
+                            float d = glm::length(hit - fc);
+                            if (d < 0.5f) {
+                                if (mods & GLFW_MOD_CONTROL) f->select = !f->select;
+                                else { bm.select_all(false); f->select = true; }
+                                status_text = "Selected face " + std::to_string(f->index);
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else if (current_mode == MODE_SCULPT && viewport_hovered && edit_node) {
+                sculpt_stroke_active = true;
             } else if (viewport_hovered) {
-                double mx, my; glfwGetCursorPos(w, &mx, &my);
-                float vx = (float)mx, vy = (float)my;
+                double mx2, my2; glfwGetCursorPos(w, &mx2, &my2);
+                float vx = (float)mx2, vy = (float)my2;
                 vec3 origin, dir;
                 camera.screen_to_ray(vx, vy, (float)WIN_W, (float)WIN_H, origin, dir);
                 SceneNode* hit; float dist;
@@ -351,6 +496,9 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
                 mouse_orbiting = false;
                 alt_held_for_orbit = false;
             }
+            if (current_mode == MODE_SCULPT && sculpt_stroke_active) {
+                sculpt_stroke_active = false;
+            }
         }
     }
 }
@@ -360,6 +508,65 @@ static void cursor_position_callback(GLFWwindow*, double mx, double my) {
     if (mouse_orbiting) camera.orbit(dx * 0.5f, dy * 0.5f);
     else if (mouse_panning) camera.pan(dx, dy);
     else if (mouse_zooming) camera.zoom(-dy * 0.5f);
+
+    if (current_mode == MODE_SCULPT && sculpt_stroke_active && edit_node) {
+        double mx2, my2; glfwGetCursorPos(glfwGetCurrentContext(), &mx2, &my2);
+        vec3 origin, dir;
+        camera.screen_to_ray((float)mx2, (float)my2, (float)WIN_W, (float)WIN_H, origin, dir);
+        auto it = edit_bmeshes.find(edit_node);
+        if (it != edit_bmeshes.end()) {
+            BMesh& bm = it->second;
+            float best_dist = 1e10f;
+            BMVert* best_v = nullptr;
+            for (int i = 0; i < bm.vert_count; ++i) {
+                BMVert* v = bm.verts[i];
+                if (v->hide) continue;
+                vec3 wp = edit_node->get_world_matrix() * vec4(v->co, 1.0f);
+                vec3 to = wp - origin;
+                float t = glm::dot(to, dir);
+                if (t < 0) continue;
+                vec3 closest = origin + dir * t;
+                float d = glm::length(wp - closest);
+                if (d < brush_settings.radius && t < best_dist) { best_dist = t; best_v = v; }
+            }
+            if (best_v) {
+                vec3 wp = edit_node->get_world_matrix() * vec4(best_v->co, 1.0f);
+                sculpt_hit_pos = wp;
+                sculpt_hit_valid = true;
+                sculpt::apply_brush(bm, best_v->co, best_v->no, brush_settings);
+                edit_node->mesh->mesh_from_bmesh(bm);
+                renderer.invalidate_mesh(edit_node->mesh.get());
+            }
+        }
+    } else if (current_mode == MODE_SCULPT && edit_node) {
+        double mx2, my2; glfwGetCursorPos(glfwGetCurrentContext(), &mx2, &my2);
+        vec3 origin, dir;
+        camera.screen_to_ray((float)mx2, (float)my2, (float)WIN_W, (float)WIN_H, origin, dir);
+        auto it = edit_bmeshes.find(edit_node);
+        if (it != edit_bmeshes.end()) {
+            BMesh& bm = it->second;
+            float best_dist = 1e10f;
+            BMVert* best_v = nullptr;
+            for (int i = 0; i < bm.vert_count; ++i) {
+                BMVert* v = bm.verts[i];
+                if (v->hide) continue;
+                vec3 wp = edit_node->get_world_matrix() * vec4(v->co, 1.0f);
+                vec3 to = wp - origin;
+                float t = glm::dot(to, dir);
+                if (t < 0) continue;
+                vec3 closest = origin + dir * t;
+                float d = glm::length(wp - closest);
+                if (d < brush_settings.radius && t < best_dist) { best_dist = t; best_v = v; }
+            }
+            if (best_v) {
+                sculpt_hit_pos = edit_node->get_world_matrix() * vec4(best_v->co, 1.0f);
+                sculpt_hit_valid = true;
+            } else {
+                sculpt_hit_valid = false;
+            }
+        }
+    }
+
     last_mx = mx; last_my = my;
 }
 
@@ -439,6 +646,15 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     else if (key == GLFW_KEY_H) show_console = !show_console;
     else if (key == GLFW_KEY_GRAVE_ACCENT) { scene.grid_enabled = !scene.grid_enabled; status_text = scene.grid_enabled ? "Grid: ON" : "Grid: OFF"; }
     else if (key == GLFW_KEY_F1) show_about = true;
+    else if (key == GLFW_KEY_TAB) {
+        if (current_mode != MODE_OBJECT) {
+            if (current_mode == MODE_EDIT) exit_edit_mode();
+            else exit_sculpt_mode();
+        } else if (scene.selected_node) {
+            if (mods & GLFW_MOD_SHIFT) enter_sculpt_mode(scene.selected_node);
+            else enter_edit_mode(scene.selected_node);
+        }
+    }
     else if (ctrl && key == GLFW_KEY_1) { selected_tool = 0; status_text = "Tool: Move"; }
     else if (ctrl && key == GLFW_KEY_2) { selected_tool = 1; status_text = "Tool: Rotate"; }
     else if (ctrl && key == GLFW_KEY_3) { selected_tool = 2; status_text = "Tool: Scale"; }
@@ -491,6 +707,17 @@ static void draw_menu_bar() {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Edit")) {
+            if (current_mode == MODE_OBJECT && scene.selected_node) {
+                if (ImGui::MenuItem("Enter Edit Mode", "Tab")) enter_edit_mode(scene.selected_node);
+                if (ImGui::MenuItem("Enter Sculpt Mode", "Shift+Tab")) enter_sculpt_mode(scene.selected_node);
+                ImGui::Separator();
+            } else if (current_mode == MODE_EDIT) {
+                if (ImGui::MenuItem("Exit Edit Mode", "Tab")) exit_edit_mode();
+                ImGui::Separator();
+            } else if (current_mode == MODE_SCULPT) {
+                if (ImGui::MenuItem("Exit Sculpt Mode", "Tab")) exit_sculpt_mode();
+                ImGui::Separator();
+            }
             if (ImGui::MenuItem("Undo", "Ctrl+Z")) undo();
             if (ImGui::MenuItem("Redo", "Ctrl+Y")) redo();
             ImGui::Separator();
@@ -1346,7 +1573,7 @@ static void draw_about() {
     if (ImGui::Begin("About OCP", &show_about, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("OCP - Object Creation Project");
         ImGui::Separator();
-        ImGui::Text("Version 3.0 (C++)");
+        ImGui::Text("Version 3.1 (C++)");
         ImGui::Text("Build: %s %s", __DATE__, __TIME__);
         ImGui::Separator();
         ImGui::TextWrapped("Professional 3D object creation tool with AI-powered\nprocedural generation, modifier stack, & organic deformation.");
@@ -1362,6 +1589,8 @@ static void draw_about() {
             ImGui::BulletText("Full PBR material editor with texture slots");
             ImGui::BulletText("Light management");
             ImGui::BulletText("Modifier stack (Subdivision, Mirror, Array, Smooth, etc.)");
+            ImGui::BulletText("Edit Mode: BMesh topology, 33 modeling tools");
+            ImGui::BulletText("Sculpt Mode: 10 brushes with symmetry");
             ImGui::BulletText("OBJ/STL/PNG export");
             ImGui::BulletText("Scene save/load");
             ImGui::BulletText("Undo/Redo (50 levels)");
@@ -1400,6 +1629,9 @@ static void draw_about() {
             ImGui::Text("Numpad 5"); ImGui::NextColumn(); ImGui::Text("Persp/Ortho Toggle"); ImGui::NextColumn();
             ImGui::Text("Numpad 0"); ImGui::NextColumn(); ImGui::Text("Camera View"); ImGui::NextColumn();
             ImGui::Separator(); ImGui::NextColumn(); ImGui::NextColumn();
+            ImGui::Text("Tab"); ImGui::NextColumn(); ImGui::Text("Edit Mode Toggle"); ImGui::NextColumn();
+            ImGui::Text("Shift+Tab"); ImGui::NextColumn(); ImGui::Text("Sculpt Mode Toggle"); ImGui::NextColumn();
+            ImGui::Separator(); ImGui::NextColumn(); ImGui::NextColumn();
             ImGui::Text("Alt+Left"); ImGui::NextColumn(); ImGui::Text("Orbit"); ImGui::NextColumn();
             ImGui::Text("Shift+Mid"); ImGui::NextColumn(); ImGui::Text("Pan"); ImGui::NextColumn();
             ImGui::Text("Ctrl+Mid"); ImGui::NextColumn(); ImGui::Text("Zoom"); ImGui::NextColumn();
@@ -1409,6 +1641,149 @@ static void draw_about() {
         ImGui::Separator();
         if (ImGui::Button("OK", ImVec2(120, 0))) show_about = false;
     }
+    ImGui::End();
+}
+
+static void draw_edit_panel() {
+    if (current_mode != MODE_EDIT || !edit_node) return;
+
+    ImGui::SetNextWindowPos(ImVec2(0, 54), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2((float)LEFT_PANEL_W, (float)WIN_H * 0.5f - 27), ImGuiCond_Always);
+    ImGui::Begin("Edit Mode", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+
+    ImGui::Text("Editing: %s", edit_node->name.c_str());
+    ImGui::Separator();
+
+    ImGui::Text("Select Mode");
+    if (ImGui::RadioButton("Vertex##sel", edit_select_mode == 0)) edit_select_mode = 0;
+    if (ImGui::RadioButton("Edge##sel", edit_select_mode == 1)) edit_select_mode = 1;
+    if (ImGui::RadioButton("Face##sel", edit_select_mode == 2)) edit_select_mode = 2;
+
+    ImGui::Separator();
+    ImGui::Text("Tools");
+
+    auto tool_btn = [](const char* label, const char* tip, bool active) {
+        bool r = ImGui::RadioButton(label, active);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+        return r;
+    };
+
+    if (tool_btn("Extrude", "Extrude selected", edit_tool == 0)) edit_tool = 0;
+    if (tool_btn("Inset", "Inset faces", edit_tool == 1)) edit_tool = 1;
+    if (tool_btn("Bevel", "Bevel edges/verts", edit_tool == 2)) edit_tool = 2;
+    if (tool_btn("Loop Cut", "Add loop cut", edit_tool == 3)) edit_tool = 3;
+    if (tool_btn("Knife", "Knife cut through mesh", edit_tool == 4)) edit_tool = 4;
+    if (tool_btn("Bridge", "Bridge edge loops", edit_tool == 5)) edit_tool = 5;
+    if (tool_btn("Fill", "Fill hole", edit_tool == 6)) edit_tool = 6;
+    if (tool_btn("Merge", "Merge at center", edit_tool == 7)) edit_tool = 7;
+    if (tool_btn("Split", "Split edge", edit_tool == 8)) edit_tool = 8;
+    if (tool_btn("Weld", "Weld vertices", edit_tool == 9)) edit_tool = 9;
+    if (tool_btn("Rip", "Rip vertex", edit_tool == 10)) edit_tool = 10;
+    if (tool_btn("Spin", "Spin tool", edit_tool == 11)) edit_tool = 11;
+    if (tool_btn("Solidify", "Solidify mesh", edit_tool == 12)) edit_tool = 12;
+    if (tool_btn("Mirror", "Mirror mesh", edit_tool == 13)) edit_tool = 13;
+
+    ImGui::Separator();
+    ImGui::Text("Operations");
+
+    auto it = edit_bmeshes.find(edit_node);
+    if (it != edit_bmeshes.end()) {
+        BMesh& bm = it->second;
+
+        int sel_v = 0, sel_e = 0, sel_f = 0;
+        for (int i = 0; i < bm.vert_count; ++i) if (bm.verts[i]->select) sel_v++;
+        for (int i = 0; i < bm.edge_count; ++i) if (bm.edges[i]->select) sel_e++;
+        for (int i = 0; i < bm.face_count; ++i) if (bm.faces[i]->select) sel_f++;
+        ImGui::Text("V:%d E:%d F:%d", sel_v, sel_e, sel_f);
+
+        if (ImGui::Button("Apply Tool##edit")) {
+            switch (edit_tool) {
+                case 0: edit_tools::extrude_region(bm, vec3(0, 0.2f, 0)); break;
+                case 1: edit_tools::inset_faces(bm, 0.05f); break;
+                case 2: edit_tools::bevel_edges(bm, 0.05f); break;
+                case 3: break;
+                case 7: edit_tools::merge_at_center(bm); break;
+                case 12: edit_tools::solidify(bm, 0.1f); break;
+                case 13: edit_tools::mirror(bm, 0); break;
+            }
+            edit_node->mesh->mesh_from_bmesh(bm);
+            renderer.invalidate_mesh(edit_node->mesh.get());
+            log_message("Applied edit tool");
+        }
+
+        ImGui::Separator();
+        if (ImGui::Button("Subdivide")) {
+            edit_tools::subdivide(bm, 1);
+            edit_node->mesh->mesh_from_bmesh(bm);
+            renderer.invalidate_mesh(edit_node->mesh.get());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Smooth")) {
+            edit_tools::smooth(bm, 0.5f, 1);
+            edit_node->mesh->mesh_from_bmesh(bm);
+            renderer.invalidate_mesh(edit_node->mesh.get());
+        }
+        if (ImGui::Button("Triangulate")) {
+            edit_tools::triangulate(bm);
+            edit_node->mesh->mesh_from_bmesh(bm);
+            renderer.invalidate_mesh(edit_node->mesh.get());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Recalc N")) {
+            edit_tools::recalculate_normals(bm);
+            edit_node->mesh->mesh_from_bmesh(bm);
+            renderer.invalidate_mesh(edit_node->mesh.get());
+        }
+        if (ImGui::Button("Select All")) { bm.select_all(true); }
+        ImGui::SameLine();
+        if (ImGui::Button("Deselect All")) { bm.select_all(false); }
+    }
+
+    ImGui::Separator();
+    if (ImGui::Button("Exit Edit Mode", ImVec2(-1, 0))) exit_edit_mode();
+
+    ImGui::End();
+}
+
+static void draw_sculpt_panel() {
+    if (current_mode != MODE_SCULPT || !edit_node) return;
+
+    ImGui::SetNextWindowPos(ImVec2(0, 54), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2((float)LEFT_PANEL_W, (float)WIN_H * 0.5f - 27), ImGuiCond_Always);
+    ImGui::Begin("Sculpt Mode", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+
+    ImGui::Text("Sculpting: %s", edit_node->name.c_str());
+    ImGui::Separator();
+
+    ImGui::Text("Brush");
+    const char* brush_names[] = {"Draw", "Clay", "Inflate", "Smooth", "Flatten", "Grab", "Crease", "Pinch", "Mask", "Smooth Mask"};
+    int bt = (int)brush_settings.type;
+    if (ImGui::Combo("Type", &bt, brush_names, 10))
+        brush_settings.type = (sculpt::BrushType)bt;
+
+    ImGui::SliderFloat("Radius", &brush_settings.radius, 0.01f, 5.0f);
+    ImGui::SliderFloat("Strength", &brush_settings.strength, 0.01f, 2.0f);
+    ImGui::SliderFloat("Focal", &brush_settings.focal, 0.0f, 1.0f);
+
+    ImGui::Separator();
+    ImGui::Text("Symmetry");
+    ImGui::Checkbox("X##sym", &brush_settings.use_symmetry_x);
+    ImGui::SameLine();
+    ImGui::Checkbox("Y##sym", &brush_settings.use_symmetry_y);
+    ImGui::SameLine();
+    ImGui::Checkbox("Z##sym", &brush_settings.use_symmetry_z);
+
+    ImGui::Separator();
+    if (edit_node) {
+        auto it = edit_bmeshes.find(edit_node);
+        if (it != edit_bmeshes.end()) {
+            ImGui::Text("Vertices: %d", it->second.vert_count);
+        }
+    }
+
+    ImGui::Separator();
+    if (ImGui::Button("Exit Sculpt Mode", ImVec2(-1, 0))) exit_sculpt_mode();
+
     ImGui::End();
 }
 
@@ -1423,8 +1798,9 @@ static void draw_status_bar() {
     ImGui::Text("FPS: %.0f", current_fps);
 
     const char* tool_names[] = {"Move", "Rotate", "Scale"};
+    const char* mode_names[] = {"Object", "Edit", "Sculpt"};
     ImGui::SameLine(400);
-    ImGui::Text("| %s", tool_names[selected_tool]);
+    ImGui::Text("| %s | %s", mode_names[current_mode], tool_names[selected_tool]);
 
     ImGui::SameLine(500);
     ImGui::Text("| Wire:%s XRay:%s",
@@ -1536,6 +1912,8 @@ int main() {
         draw_settings();
         draw_about();
         draw_resource_browser();
+        draw_edit_panel();
+        draw_sculpt_panel();
         draw_status_bar();
 
         scene.update();
@@ -1548,6 +1926,19 @@ int main() {
 
         if (scene.selected_node) {
             renderer.render_gizmo(scene.selected_node, selected_tool, camera.get_view_matrix(), camera.get_projection_matrix(), camera);
+        }
+
+        if (current_mode == MODE_EDIT && edit_node) {
+            auto it = edit_bmeshes.find(edit_node);
+            if (it != edit_bmeshes.end()) {
+                renderer.render_edit_overlays(it->second, edit_node->get_world_matrix(),
+                    camera.get_view_matrix(), camera.get_projection_matrix(), edit_select_mode, camera);
+            }
+        }
+
+        if (current_mode == MODE_SCULPT && sculpt_hit_valid) {
+            renderer.render_sculpt_cursor(sculpt_hit_pos, brush_settings.radius,
+                camera.get_view_matrix(), camera.get_projection_matrix());
         }
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

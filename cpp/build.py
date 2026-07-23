@@ -39,14 +39,14 @@ for f in ["imgui_impl_glfw.cpp", "imgui_impl_opengl3.cpp"]:
 
 print("[2/3] GLAD + OCP")
 run([GPP] + FLAGS + INC + ["-c", os.path.join(GLAD, "src", "gl.c"), "-o", "gl.o"], "gl.c")
-for src in ["mesh", "scene", "camera", "primitives", "renderer", "ai_engine", "exporters", "main"]:
+for src in ["mesh", "scene", "camera", "primitives", "renderer", "ai_engine", "exporters", "bmesh", "edit_tools", "sculpt_tools", "main"]:
     run([GPP] + FLAGS + INC + ["-c", f"src\\{src}.cpp", "-o", f"{src}.o"], f"{src}.cpp")
 
 print("[3/3] Link")
 objs = ["imgui.o", "imgui_draw.o", "imgui_tables.o", "imgui_widgets.o",
         "imgui_impl_glfw.o", "imgui_impl_opengl3.o", "gl.o",
         "mesh.o", "scene.o", "camera.o", "primitives.o", "renderer.o",
-        "ai_engine.o", "exporters.o", "main.o"]
+        "ai_engine.o", "exporters.o", "bmesh.o", "edit_tools.o", "sculpt_tools.o", "main.o"]
 run([GPP] + FLAGS + ["-o", "OCP.exe"] + objs + LIB + ["-Wl,--allow-multiple-definition"], "link")
 
 sz = os.path.getsize("OCP.exe")

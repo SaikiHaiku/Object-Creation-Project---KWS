@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <unordered_map>
 
+namespace ocp { class BMesh; }
+
 namespace ocp {
 
 struct Vertex {
@@ -81,6 +83,9 @@ public:
                                   float tube = 0.1f, int segments = 64);
     static Mesh create_icosphere(float radius = 0.5f, int subdivisions = 3);
     static Mesh create_hemisphere(float radius = 0.5f, int segments = 16);
+
+    void bmesh_from_mesh(BMesh& bm) const;
+    void mesh_from_bmesh(const BMesh& bm);
 
 private:
     std::vector<float> cached_vertex_data;
