@@ -27,7 +27,7 @@ Professional 3D/2D object creation tool with manual editing and AI procedural ge
 - **X/Y/Z symmetry** support
 - Real-time sculpt cursor visualization
 
-### AI Generation (60+ Generators)
+### AI Generation (Parametric Procedural Engine)
 - **Organic deformation** — Perlin noise, ridged multifractal, domain warping
 - No symmetry artifacts — every mesh is unique
 - Scenes: house, robot, castle, spaceship, tree, sword, airplane, boat, skull, brain, flower, mushroom, donut, jewelry, throne, camp, fountain, crystal, coral, butterfly, cat, dog, bird, cave, tent, bookshelf, dragon, alien, car, tank, guitar, piano, house interior, city, dungeon, factory, library, market, tower, bridge, garden, lighthouse, windmill, volcano, mountain, ocean, space station, submarine, robot army, medieval village, cyberpunk city, steampunk machine, fantasy castle, ancient temple, modern skyscraper, haunted house, underwater base, space colony, and more
@@ -56,13 +56,13 @@ Professional 3D/2D object creation tool with manual editing and AI procedural ge
 
 ## Download
 
-**[OCP v3.1 (5 MB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.1/OCP-v3.1.exe)** + **[libwinpthread-1.dll](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.1/libwinpthread-1.dll)** — BMesh edit mode, sculpt mode, 33 modeling tools, 10 sculpt brushes. Requires OpenGL 3.3+ GPU.
+**[OCP v3.2 (5 MB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.2/OCP.exe)** + **[libwinpthread-1.dll](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.2/libwinpthread-1.dll)** — Parametric AI engine, BMesh edit mode, sculpt mode, 33 modeling tools, 10 sculpt brushes. Requires OpenGL 3.3+ GPU.
 
 ## Quick Start
 
-1. Download `OCP-v3.1.exe` and `libwinpthread-1.dll`
+1. Download `OCP.exe` and `libwinpthread-1.dll`
 2. Place both in the same folder
-3. Run `OCP-v3.1.exe`
+3. Run `OCP.exe`
 4. Requires OpenGL 3.3+ GPU
 
 ### Build from Source (C++)
