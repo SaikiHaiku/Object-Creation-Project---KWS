@@ -378,13 +378,17 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
         if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
             if (mods & GLFW_MOD_CONTROL) {
                 mouse_zooming = true;
-            } else {
+            } else if (mods & GLFW_MOD_SHIFT) {
                 mouse_panning = true;
+            } else {
+                mouse_orbiting = true;
             }
         } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-            mouse_orbiting = true;
-            right_held_for_orbit = true;
-            glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            if (viewport_hovered) {
+                mouse_orbiting = true;
+                right_held_for_orbit = true;
+                glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+            }
         } else if (button == GLFW_MOUSE_BUTTON_LEFT) {
             if (mods & GLFW_MOD_ALT) {
                 mouse_orbiting = true;
@@ -1898,7 +1902,7 @@ int main() {
         glfwGetFramebufferSize(window, &display_w, &display_h);
 
         // Roblox-style WASD camera movement (while right-click held)
-        if (right_held_for_orbit && !io.WantCaptureKeyboard) {
+        if (right_held_for_orbit) {
             float move_speed = 5.0f * (float)dt;
             if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
                 glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
