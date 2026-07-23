@@ -56,36 +56,14 @@ Professional 3D/2D object creation tool with manual editing and AI procedural ge
 
 ## Download
 
-### v3.1 — Latest (BMesh Edit + Sculpt Mode)
-**[OCP v3.1](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.1/OCP-v3.1.exe)** (~5 MB) + **[libwinpthread-1.dll](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.1/libwinpthread-1.dll)** — BMesh edit mode, sculpt mode, 33 modeling tools, 10 sculpt brushes
-
-### v2.3 — Full Installer (Recommended)
-**[OCP v2.3 Setup (667 MB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.3/OCP-v2.3-Setup.exe)** — Professional installer with all resources embedded (textures, models, fonts, brushes, scenes, materials). Just run the installer!
-
-**[OCP HDRI Pack (1.7 GB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.3/OCP-HDRI-Pack.7z)** — HDRI environment maps for realistic lighting. Place next to `OCP-v2.3-Setup.exe` before installing — the installer will extract it automatically.
-
-### v2.3 — Portable
-**[OCP v2.3 Portable (Part 1: Core)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.3/OCP-v2.3-part1-core.zip)** — exe + textures + models + fonts + brushes + scenes + materials (~660 MB)
-
-**[OCP v2.3 Portable (Part 2: HDRI)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.3/OCP-v2.3-part2-hdri.zip)** — HDRI environment maps (~1.7 GB)
-
-### Previous Versions
-- **[v2.2 Installer](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.2/OCP-v2.2-Installer.exe)** — Previous version (~1.3 MB, exe only)
-- **[v2.1](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.1/OCP-v2.1-CPP.zip)** — C++ version
-- **[v1.0 Python](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v1.0/OCP.exe)** — Original Python version (117 MB)
+**[OCP v3.1 (5 MB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.1/OCP-v3.1.exe)** + **[libwinpthread-1.dll](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.1/libwinpthread-1.dll)** — BMesh edit mode, sculpt mode, 33 modeling tools, 10 sculpt brushes. Requires OpenGL 3.3+ GPU.
 
 ## Quick Start
 
-### Installer (v2.3)
-1. Download `OCP-v2.3-Setup.exe` (and optionally `OCP-HDRI-Pack.7z` for HDRI lighting)
-2. Run the installer and follow the steps
-3. Select which components to install (textures, models, fonts, HDRI, etc.)
-4. OCP will appear in your Start Menu
-
-### Portable (v2.3)
-1. Download `OCP-v2.3-part1-core.zip` and `OCP-v2.3-part2-hdri.zip`
-2. Extract both into the same folder
-3. Run `OCP.exe` (`libwinpthread-1.dll` must be in the same folder)
+1. Download `OCP-v3.1.exe` and `libwinpthread-1.dll`
+2. Place both in the same folder
+3. Run `OCP-v3.1.exe`
+4. Requires OpenGL 3.3+ GPU
 
 ### Build from Source (C++)
 ```bash
