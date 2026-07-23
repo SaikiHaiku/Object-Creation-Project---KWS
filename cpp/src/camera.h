@@ -20,8 +20,13 @@ public:
     void orbit(float dyaw, float dpitch);
     void zoom(float delta);
     void pan(float dx, float dy);
+    void move(float forward, float right, float up, float speed);
     void focus_on(const vec3& center, float size);
     void set_view(const std::string& name);
+
+    vec3 get_forward() const;
+    vec3 get_right() const;
+    vec3 get_up() const;
 
     mat4 get_view_matrix() const;
     mat4 get_projection_matrix() const;

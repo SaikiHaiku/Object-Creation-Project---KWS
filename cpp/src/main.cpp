@@ -61,6 +61,7 @@ static const int MAX_LOG = 200;
 
 static bool mouse_orbiting = false, mouse_panning = false, mouse_zooming = false;
 static bool alt_held_for_orbit = false;
+static bool right_held_for_orbit = false;
 static double last_mx = 0, last_my = 0;
 static bool viewport_hovered = false;
 
@@ -377,13 +378,13 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
         if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
             if (mods & GLFW_MOD_CONTROL) {
                 mouse_zooming = true;
-            } else if (mods & GLFW_MOD_SHIFT) {
-                mouse_panning = true;
             } else {
-                mouse_orbiting = true;
+                mouse_panning = true;
             }
         } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-            mouse_panning = true;
+            mouse_orbiting = true;
+            right_held_for_orbit = true;
+            glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         } else if (button == GLFW_MOUSE_BUTTON_LEFT) {
             if (mods & GLFW_MOD_ALT) {
                 mouse_orbiting = true;
@@ -490,7 +491,9 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
             mouse_panning = false;
             mouse_zooming = false;
         } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-            mouse_panning = false;
+            mouse_orbiting = false;
+            right_held_for_orbit = false;
+            glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         } else if (button == GLFW_MOUSE_BUTTON_LEFT) {
             if (alt_held_for_orbit) {
                 mouse_orbiting = false;
@@ -1893,6 +1896,25 @@ int main() {
 
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
+
+        // Roblox-style WASD camera movement (while right-click held)
+        if (right_held_for_orbit && !io.WantCaptureKeyboard) {
+            float move_speed = 5.0f * (float)dt;
+            if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
+                move_speed *= 3.0f;
+            }
+            float fwd = 0, right = 0, up = 0;
+            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) fwd += 1.0f;
+            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) fwd -= 1.0f;
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) right -= 1.0f;
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) right += 1.0f;
+            if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) up += 1.0f;
+            if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) up -= 1.0f;
+            if (fwd != 0 || right != 0 || up != 0) {
+                camera.move(fwd, right, up, move_speed);
+            }
+        }
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();

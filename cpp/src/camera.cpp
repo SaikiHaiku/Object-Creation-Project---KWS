@@ -31,6 +31,27 @@ void Camera::pan(float dx, float dy) {
     update_position_from_orbit();
 }
 
+vec3 Camera::get_forward() const {
+    return glm::normalize(target - position);
+}
+
+vec3 Camera::get_right() const {
+    return glm::normalize(glm::cross(get_forward(), up));
+}
+
+vec3 Camera::get_up() const {
+    return glm::normalize(glm::cross(get_right(), get_forward()));
+}
+
+void Camera::move(float fwd, float right, float up_amount, float speed) {
+    vec3 forward_dir = get_forward();
+    vec3 right_dir = get_right();
+    vec3 up_dir = this->up;
+    vec3 move_vec = forward_dir * fwd + right_dir * right + up_dir * up_amount;
+    target += move_vec * speed;
+    update_position_from_orbit();
+}
+
 void Camera::focus_on(const vec3& center, float size) {
     target = center;
     distance = size * 2.0f;
