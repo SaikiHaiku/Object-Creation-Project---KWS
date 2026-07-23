@@ -1,5 +1,4 @@
 #include "ai_engine.h"
-#include "primitives.h"
 #include <algorithm>
 #include <cmath>
 #include <sstream>
@@ -11,6 +10,10 @@
 
 namespace ocp {
 
+// ============================================================
+// UTILITIES
+// ============================================================
+
 static std::string to_lower(const std::string& s) {
     std::string r = s; std::transform(r.begin(), r.end(), r.begin(), ::tolower); return r;
 }
@@ -19,35 +22,6 @@ static bool contains_word(const std::string& text, const std::string& word) {
     std::string lt = to_lower(text);
     std::string lw = to_lower(word);
     return lt.find(lw) != std::string::npos;
-}
-
-std::mt19937& ProceduralEngine::rng() { return rng_engine; }
-float ProceduralEngine::randf() { return std::uniform_real_distribution<float>(0.0f, 1.0f)(rng_engine); }
-
-void ProceduralEngine::merge_mesh(Mesh& target, const Mesh& source, const vec3& offset) {
-    uint32_t base = (uint32_t)target.vertices.size();
-    for (auto& v : source.vertices)
-        target.add_vertex(v.position + offset, v.normal, v.uv, v.color);
-    for (auto& f : source.faces) {
-        std::vector<uint32_t> fi;
-        for (auto& vi : f.vertices) fi.push_back(vi + base);
-        target.add_face(fi, f.normal);
-    }
-}
-
-void ProceduralEngine::merge_mesh_transform(Mesh& target, const Mesh& source, const mat4& transform) {
-    mat3 nm = mat3_normal_from_mat4(transform);
-    uint32_t base = (uint32_t)target.vertices.size();
-    for (auto& v : source.vertices) {
-        vec3 pos = vec3(transform * vec4(v.position, 1.0f));
-        vec3 nrm = glm::normalize(nm * v.normal);
-        target.add_vertex(pos, nrm, v.uv, v.color);
-    }
-    for (auto& f : source.faces) {
-        std::vector<uint32_t> fi;
-        for (auto& vi : f.vertices) fi.push_back(vi + base);
-        target.add_face(fi, f.normal);
-    }
 }
 
 // ============================================================
@@ -159,7 +133,7 @@ ParsedPrompt PromptEngine::parse(const std::string& prompt) {
     else if (contains_word(lp, "glossy") || contains_word(lp, "brillant") || contains_word(lp, "shiny") || contains_word(lp, "brillance")) p.material_type = "glossy";
     else if (contains_word(lp, "matte") || contains_word(lp, "mat") || contains_word(lp, "plat") || contains_word(lp, "diffus")) p.material_type = "matte";
     else if (contains_word(lp, "glass") || contains_word(lp, "verre")) p.material_type = "glass";
-    else if (contains_word(lp, "emissive") || contains_word(lp, "lumineux") || contains_word(lp, "glow") || contains_word(lp, "brillant") || contains_word(lp, "lumiere")) p.material_type = "emissive";
+    else if (contains_word(lp, "emissive") || contains_word(lp, "lumineux") || contains_word(lp, "glow") || contains_word(lp, "lumiere")) p.material_type = "emissive";
     else if (contains_word(lp, "wireframe") || contains_word(lp, "fil")) p.material_type = "wireframe";
     else if (contains_word(lp, "bois") || contains_word(lp, "wood") || contains_word(lp, "en bois")) p.material_type = "wood";
     else if (contains_word(lp, "pierre") || contains_word(lp, "stone") || contains_word(lp, "roche")) p.material_type = "stone";
@@ -187,7 +161,7 @@ ParsedPrompt PromptEngine::parse(const std::string& prompt) {
     if (contains_word(lp, "fantaisie") || contains_word(lp, "fantasy") || contains_word(lp, "magique")) p.style = "fantasy";
     else if (contains_word(lp, "sombre") || contains_word(lp, "dark")) p.style = "dark";
     else if (contains_word(lp, "lumineux") || contains_word(lp, "bright")) p.style = "bright";
-    else if (contains_word(lp, "realiste") || contains_word(lp, "realistic") || contains_word(lp, "realiste")) p.style = "realistic";
+    else if (contains_word(lp, "realiste") || contains_word(lp, "realistic")) p.style = "realistic";
     else if (contains_word(lp, "cartoon") || contains_word(lp, "cartoonesque")) p.style = "cartoon";
     else if (contains_word(lp, "futuriste") || contains_word(lp, "futuristic")) p.style = "futuristic";
     else if (contains_word(lp, "ancien") || contains_word(lp, "ancient") || contains_word(lp, "vieux")) p.style = "ancient";
@@ -199,28 +173,12 @@ ParsedPrompt PromptEngine::parse(const std::string& prompt) {
 
 std::string PromptEngine::get_description(const ParsedPrompt& p) {
     std::string d;
-    if (p.scene_type == "tree") d = "Generated a gnarled tree with organic bark texture and dense foliage clusters";
-    else if (p.scene_type == "house") d = "Created a detailed house with textured walls, roof overhang, windows with frames, and a chimney";
-    else if (p.scene_type == "robot") d = "Assembled a detailed humanoid robot with articulated limbs, glowing eyes, and segmented joints";
-    else if (p.scene_type == "cat") d = "Shaped a realistic cat with pointed ears, curved tail, whiskers, and striped fur coloring";
-    else if (p.scene_type == "dog") d = "Sculpted a faithful dog with floppy ears, wagging tail, tongue, and detailed paws";
-    else if (p.scene_type == "bird") d = "Crafted a detailed bird with layered wings, forked beak, tail feathers, and perching legs";
-    else if (p.scene_type == "castle") d = "Built a medieval stone castle with four corner towers, battlements, and a wooden gate";
-    else if (p.scene_type == "spaceship") d = "Constructed a sleek spaceship with aerodynamic hull and engine pods";
-    else if (p.scene_type == "car") d = "Designed a detailed car with chassis, cabin, wheels, and headlights";
-    else if (p.scene_type == "sword") d = "Forged a sharp sword with ornate hilt and gleaming blade";
-    else if (p.scene_type == "chair") d = "Built a sturdy chair with legs, seat, and backrest";
-    else if (p.scene_type == "table") d = "Constructed a solid table with four legs and a flat surface";
-    else if (p.scene_type == "mountain") d = "Raised a rugged mountain with organic rocky terrain";
-    else if (p.scene_type == "crystal") d = "Grew a cluster of shimmering crystals with varied angles and facets";
-    else if (p.scene_type == "skull") d = "Sculpted a detailed skull with anatomical contours";
-    else if (p.scene_type == "brain") d = "Modeled a brain with realistic folds and sulci patterns";
-    else if (p.scene_type == "mushroom") d = "Grew an organic mushroom with spotted cap and textured stem";
-    else if (p.scene_type == "campfire") d = "Set up a campfire with stone ring and stacked logs";
-    else if (p.scene_type == "flower") d = "Grew a delicate flower with layered petals and stem";
-    else if (p.scene_type == "potion") d = "Brewed a mysterious potion in a glass bottle with cork stopper";
-    else if (!p.scene_type.empty()) d = "Generated a " + p.scene_type + " with detailed organic features";
-    else { d = "Created object(s): "; for (auto& s : p.shapes) d += s + " "; }
+    if (!p.scene_type.empty()) {
+        d = "Procedurally modeled a detailed " + p.scene_type + " from parametric volumes with organic noise deformation";
+    } else {
+        d = "Created object(s): ";
+        for (auto& s : p.shapes) d += s + " ";
+    }
     d += " (size: " + std::to_string(p.size) + ")";
     if (p.count > 1) d += " x" + std::to_string(p.count);
     if (!p.material_type.empty()) d += " [" + p.material_type + "]";
@@ -228,3428 +186,1530 @@ std::string PromptEngine::get_description(const ParsedPrompt& p) {
 }
 
 // ============================================================
-// DEFORMATION UTILITIES
+// PARAMETRIC BUILDER — builds every volume vertex-by-vertex
 // ============================================================
 
-void ProceduralEngine::deform_organic(Mesh& m, float amount, float seed) {
-    for (auto& v : m.vertices) {
-        float wx = v.position.x + fbm3d(v.position.x * 2.0f + seed + 100.0f, v.position.y * 2.0f, v.position.z * 2.0f, 3) * amount * 0.8f;
-        float wy = v.position.y + fbm3d(v.position.x * 2.0f, v.position.y * 2.0f + seed + 200.0f, v.position.z * 2.0f, 3) * amount * 0.8f;
-        float wz = v.position.z + fbm3d(v.position.x * 2.0f, v.position.y * 2.0f, v.position.z * 2.0f + seed + 300.0f, 3) * amount * 0.8f;
-        float n = fbm3d(wx * 3.0f + seed, wy * 3.0f + seed * 0.7f, wz * 3.0f + seed * 1.3f, 6);
-        float ridge = 1.0f - std::abs(fbm3d(wx * 4.0f + seed + 50.0f, wy * 4.0f, wz * 4.0f, 4));
-        ridge = ridge * ridge;
-        float combined = n * 0.75f + ridge * 0.25f;
-        v.position += v.normal * combined * amount;
-    }
-    m.dirty = true;
-    m.compute_normals();
+ParametricBuilder::ParametricBuilder() {}
+
+float ParametricBuilder::vol_noise(float x, float y, float z, float seed) {
+    return fbm3d(x + seed, y + seed * 0.7f, z + seed * 1.3f, 5);
 }
 
-void ProceduralEngine::bend_mesh(Mesh& m, float amount, vec3 axis) {
-    axis = glm::normalize(axis);
-    for (auto& v : m.vertices) {
-        float t = glm::dot(v.position, axis);
-        float angle = t * amount;
-        float cs = cosf(angle), sn = sinf(angle);
-        vec3 perp = v.position - axis * t;
-        v.position = axis * t + perp * cs + glm::cross(axis, perp) * sn;
-    }
-    m.dirty = true;
-    m.compute_normals();
-}
+// ---- SPHERE ----
+Mesh ParametricBuilder::build_sphere(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamSphere" : vol.name;
+    int seg = vol.segments;
+    int ring = vol.rings;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float rad = vol.params.sphere.radius;
 
-void ProceduralEngine::taper_mesh(Mesh& m, float top_scale, float bottom_scale) {
-    float min_y = 1e10f, max_y = -1e10f;
-    for (auto& v : m.vertices) { min_y = std::min(min_y, v.position.y); max_y = std::max(max_y, v.position.y); }
-    float range = max_y - min_y;
-    if (range < 1e-6f) return;
-    for (auto& v : m.vertices) {
-        float t = (v.position.y - min_y) / range;
-        float s = lerp(bottom_scale, top_scale, t);
-        v.position.x *= s;
-        v.position.z *= s;
-    }
-    m.dirty = true;
-    m.compute_normals();
-}
-
-void ProceduralEngine::add_random_detail(Mesh& m, float detail_size, int count) {
-    if (m.vertices.empty()) return;
-    std::uniform_int_distribution<int> dist(0, (int)m.vertices.size() - 1);
-    for (int i = 0; i < count; i++) {
-        int idx = dist(rng_engine);
-        float n = noise2d(idx * 0.17f, i * 0.31f);
-        m.vertices[idx].position += m.vertices[idx].normal * detail_size * (0.5f + 0.5f * n);
-    }
-    m.dirty = true;
-    m.compute_normals();
-}
-
-// ============================================================
-// ORGANIC MESH CREATORS
-// ============================================================
-
-Mesh ProceduralEngine::create_organic_sphere(float radius, int seg, int rings, float seed, float bumpiness) {
-    Mesh m; m.name = "OrganicSphere";
-    for (int r = 0; r <= rings; r++) {
-        float phi = (float)M_PI * r / rings;
+    for (int r = 0; r <= ring; r++) {
+        float phi = (float)M_PI * r / ring;
         for (int s = 0; s <= seg; s++) {
             float theta = 2.0f * (float)M_PI * s / seg;
-            float cx = cosf(theta)*sinf(phi)*2.0f;
-            float cy = cosf(phi)*2.0f;
-            float cz = sinf(theta)*sinf(phi)*2.0f;
-            float wx = cx + fbm3d(cx+seed+100.0f, cy, cz, 3) * 0.3f;
-            float wy = cy + fbm3d(cx, cy+seed+200.0f, cz, 3) * 0.3f;
-            float wz = cz + fbm3d(cx, cy, cz+seed+300.0f, 3) * 0.3f;
-            float n = fbm3d(wx+seed, wy+seed*0.7f, wz+seed*1.3f, 6);
-            float ridge = 1.0f - std::abs(fbm3d(wx*1.5f+seed+50.0f, wy*1.5f, wz*1.5f, 4));
-            ridge = ridge * ridge * 0.3f;
-            float r2 = radius * (1.0f + (n + ridge) * bumpiness);
-            vec3 pos(r2*sinf(phi)*cosf(theta), r2*cosf(phi), r2*sinf(phi)*sinf(theta));
-            m.add_vertex(pos, glm::normalize(pos), vec2((float)s/seg, (float)r/rings));
+            float nx = cosf(theta) * sinf(phi);
+            float ny = cosf(phi);
+            float nz = sinf(theta) * sinf(phi);
+            float n = vol_noise(nx * ns, ny * ns, nz * ns, seed);
+            float ridge = 1.0f - std::abs(vol_noise(nx * ns * 1.5f + 50.0f, ny * ns * 1.5f, nz * ns * 1.5f, seed + 10.0f));
+            ridge *= ridge * 0.3f;
+            float r2 = rad * (1.0f + (n + ridge) * na);
+            vec3 pos(r2 * nx, r2 * ny, r2 * nz);
+            vec2 uv((float)s / seg, (float)r / ring);
+            m.add_vertex(pos, glm::normalize(pos), uv);
         }
     }
-    for (int r = 0; r < rings; r++) for (int s = 0; s < seg; s++) {
-        uint32_t i0 = r*(seg+1)+s;
-        m.add_face({i0, i0+(uint32_t)(seg+1), i0+(uint32_t)(seg+2), i0+1});
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_organic_cylinder(float r, float h, int seg, float seed, float bulge) {
-    Mesh m; m.name = "OrganicCyl"; float hh = h*0.5f;
-    for (int i = 0; i <= seg; i++) {
-        float theta = 2.0f*(float)M_PI*i/seg;
-        float ct = cosf(theta), st = sinf(theta);
-        float wx = ct*2.0f + fbm3d(ct+seed+100.0f, hh*2.0f, st, 3)*0.3f;
-        float wz = st*2.0f + fbm3d(ct, hh*2.0f+seed+200.0f, st+100.0f, 3)*0.3f;
-        float nt = fbm3d(wx+seed, hh*2.0f, wz, 6)*bulge;
-        float nb = fbm3d(wx+seed+10.0f, -hh*2.0f, wz, 6)*bulge;
-        float rt = r*(1.0f+nt), rb = r*(1.0f+nb);
-        vec3 nrm = glm::normalize(vec3(ct*h, (rb-rt), st*h));
-        m.add_vertex(vec3(ct*rt, hh, st*rt), vec3(0,1,0), vec2((float)i/seg,1));
-        m.add_vertex(vec3(ct*rb, -hh, st*rb), vec3(0,-1,0), vec2((float)i/seg,0));
-        m.add_vertex(vec3(ct*rb, -hh, st*rb), nrm, vec2((float)i/seg,0));
-        m.add_vertex(vec3(ct*rt, hh, st*rt), nrm, vec2((float)i/seg,1));
-    }
-    for (int i = 0; i < seg; i++) {
-        int b = i*4;
-        m.add_face({(uint32_t)b, (uint32_t)(b+4), (uint32_t)(b+5), (uint32_t)(b+1)});
-        m.add_face({(uint32_t)(b+2), (uint32_t)(b+3), (uint32_t)(b+7), (uint32_t)(b+6)});
-    }
-    uint32_t tc = (uint32_t)m.vertices.size();
-    m.add_vertex(vec3(0,hh,0), vec3(0,1,0));
-    uint32_t bc = (uint32_t)m.vertices.size();
-    m.add_vertex(vec3(0,-hh,0), vec3(0,-1,0));
-    for (int i = 0; i < seg; i++) {
-        m.add_face({tc, (uint32_t)(i*4), (uint32_t)(((i+1)%(seg+1))*4)});
-        m.add_face({bc, (uint32_t)(((i+1)%(seg+1))*4+1), (uint32_t)(i*4+1)});
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_stone(float size, float seed) {
-    Mesh m = create_ico_sphere(size*0.5f, 3);
-    for (auto& v : m.vertices) {
-        float n = fbm3d(v.position.x*4.0f+seed, v.position.y*4.0f, v.position.z*4.0f, 6);
-        v.position += v.normal * n * size * 0.15f;
-    }
-    float sx = 0.8f+0.4f*noise2d(seed,0), sy = 0.7f+0.3f*noise2d(seed,1), sz = 0.8f+0.4f*noise2d(seed,2);
-    for (auto& v : m.vertices) { v.position.x *= sx; v.position.y *= sy; v.position.z *= sz; }
-    for (auto& v : m.vertices) {
-        float cv = 0.55f + 0.1f*fbm3d(v.position.x*6.0f+seed, v.position.y*6.0f, v.position.z*6.0f, 5);
-        float brown = noise3d(v.position.x*3.0f+seed+77.0f, v.position.y*3.0f, v.position.z*3.0f)*0.06f;
-        v.color = vec4(cv+brown, cv*0.95f+brown*0.5f, cv*0.9f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_log(float radius, float length, float seed) {
-    Mesh m = create_tapered_cylinder(radius*0.85f, radius, length, 10);
-    for (auto& v : m.vertices) {
-        float bark = fbm3d(v.position.x*8.0f+seed, v.position.y*3.0f, v.position.z*8.0f, 6)*radius*0.2f;
-        float ridge = std::abs(sinf(v.position.y*20.0f+seed))*radius*0.05f;
-        v.position += v.normal * (bark + ridge);
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise2d(v.position.y*10.0f+seed, v.position.x*10.0f)*0.08f;
-        float grain = std::abs(sinf(v.position.y*15.0f+seed*3.0f))*0.03f;
-        v.color = vec4(0.38f+cv+grain, 0.24f+cv*0.5f, 0.09f+cv*0.3f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_leaf_cluster(float size, float seed) {
-    Mesh m; m.name = "Leaves";
-    for (int i = 0; i < 7; i++) {
-        float s = size*(0.35f+0.35f*noise2d(seed+i, 0.0f));
-        Mesh clump = create_organic_sphere(s, 12, 8, seed+i*7.0f, 0.3f);
-        merge_mesh(m, clump, vec3(noise2d(seed+i,1)*size*0.4f, noise2d(seed+i,2)*size*0.25f, noise2d(seed+i,3)*size*0.4f));
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise3d(v.position.x*4.0f+seed, v.position.y*4.0f, v.position.z*4.0f)*0.2f;
-        float green_var = noise3d(v.position.x*2.0f+seed+50.0f, v.position.y*2.0f, v.position.z*2.0f)*0.1f;
-        v.color = vec4(0.08f+cv*0.3f, 0.45f+cv+green_var, 0.08f+cv*0.2f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_rock(float size, float seed) {
-    Mesh m = create_stone(size, seed);
-    for (auto& v : m.vertices) {
-        float crack = fbm3d(v.position.x*12.0f+seed*2.0f, v.position.y*12.0f, v.position.z*12.0f, 5);
-        if (crack > 0.3f) v.position -= v.normal * size * 0.03f;
-        float edge = std::abs(fbm3d(v.position.x*18.0f+seed*3.0f, v.position.y*18.0f, v.position.z*18.0f, 3));
-        if (edge > 0.4f) v.position -= v.normal * size * 0.015f;
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_cloud(float size, float seed) {
-    Mesh m; m.name = "Cloud";
-    for (int i = 0; i < 7; i++) {
-        float s = size*(0.3f+0.25f*noise2d(seed+i*3.0f, 0.0f));
-        Mesh puff = create_organic_sphere(s, 10, 6, seed+i*5.0f, 0.2f);
-        merge_mesh(m, puff, vec3(noise2d(seed+i*3.0f,1)*size*0.5f, noise2d(seed+i*3.0f,2)*size*0.15f, noise2d(seed+i*3.0f,3)*size*0.3f));
-    }
-    for (auto& v : m.vertices) {
-        float cv = 0.9f + 0.1f*noise3d(v.position.x*2.0f+seed, v.position.y*2.0f, v.position.z*2.0f);
-        v.color = vec4(cv, cv, cv+0.02f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_cave_entrance(float size, float seed) {
-    Mesh m; m.name = "Cave";
-    Mesh roof = create_stone(size*0.8f, seed);
-    for (auto& v : roof.vertices) v.position.y += size*0.4f;
-    merge_mesh(m, roof, vec3(0));
-    Mesh arch = create_tapered_cylinder(size*0.5f, size*0.55f, size*0.3f, 12);
-    taper_mesh(arch, 0.5f, 1.0f);
-    for (auto& v : arch.vertices) {
-        float n = fbm3d(v.position.x*4.0f+seed, v.position.y*4.0f, v.position.z*4.0f, 3)*size*0.05f;
-        v.position += v.normal * n;
-    }
-    merge_mesh(m, arch, vec3(0, size*0.1f, 0));
-    for (int i = 0; i < 3; i++) {
-        Mesh stalactite = create_cone(size*0.04f*(1.0f+noise2d(seed+i,4)*0.5f), size*0.15f*(1.0f+noise2d(seed+i,5)*0.5f), 6);
-        for (auto& v : stalactite.vertices) v.position.y = -v.position.y;
-        merge_mesh(m, stalactite, vec3(noise2d(seed+i,6)*size*0.3f, size*0.5f, noise2d(seed+i,7)*size*0.2f));
-    }
-    for (auto& v : m.vertices) {
-        float cv = 0.4f+0.1f*noise3d(v.position.x*3.0f+seed, v.position.y*3.0f, v.position.z*3.0f);
-        v.color = vec4(cv, cv*0.95f, cv*0.9f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_tent_mesh(float size, float seed) {
-    Mesh m; m.name = "Tent";
-    Mesh body = create_pyramid_mesh(size*0.8f, size*0.7f, 4);
-    for (auto& v : body.vertices) {
-        float n = fbm3d(v.position.x*5.0f+seed, v.position.y*5.0f, v.position.z*5.0f, 3);
-        v.position += v.normal * n * size * 0.02f;
-        if (v.position.y > 0.0f) v.position.y *= 0.95f;
-    }
-    merge_mesh(m, body, vec3(0, size*0.35f, 0));
-    for (auto& v : m.vertices) {
-        float cv = noise2d(v.position.x*4.0f+seed, v.position.z*4.0f)*0.05f;
-        v.color = vec4(0.35f+cv, 0.5f+cv, 0.3f+cv, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_barrel_mesh(float size, float seed) {
-    Mesh m; m.name = "Barrel";
-    Mesh body = create_organic_cylinder(size*0.3f, size*0.7f, 16, seed, 0.15f);
-    taper_mesh(body, 0.9f, 0.92f);
-    merge_mesh(m, body, vec3(0));
-    for (int i = 0; i < 2; i++) {
-        Mesh band = create_torus(size*0.31f, size*0.015f, 20, 6);
-        for (auto& v : band.vertices) v.position.y += (i==0 ? 0.2f : -0.2f)*size;
-        merge_mesh(m, band, vec3(0));
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise2d(v.position.y*8.0f+seed, v.position.x*8.0f)*0.06f;
-        v.color = vec4(0.45f+cv, 0.3f+cv*0.5f, 0.15f+cv*0.3f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_bench_mesh(float size, float seed) {
-    Mesh m; m.name = "Bench";
-    Mesh seat = create_cube(size*0.8f);
-    for (auto& v : seat.vertices) { v.position = vec3(v.position.x, v.position.y*0.05f, v.position.z*0.3f); }
-    merge_mesh(m, seat, vec3(0, size*0.3f, 0));
-    Mesh back = create_cube(size*0.8f);
-    for (auto& v : back.vertices) { v.position = vec3(v.position.x, v.position.y*0.4f, v.position.z*0.03f); }
-    merge_mesh(m, back, vec3(0, size*0.52f, -size*0.13f));
-    for (int i = 0; i < 4; i++) {
-        float lx = (i%2==0 ? -1.0f : 1.0f)*size*0.35f;
-        float lz = (i<2 ? -1.0f : 1.0f)*size*0.12f;
-        Mesh leg = create_tapered_cylinder(size*0.025f, size*0.03f, size*0.3f, 6);
-        merge_mesh(m, leg, vec3(lx, size*0.15f, lz));
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise2d(v.position.x*5.0f+seed, v.position.z*5.0f)*0.05f;
-        v.color = vec4(0.5f+cv, 0.33f+cv*0.5f, 0.13f+cv*0.3f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_fountain_mesh(float size, float seed) {
-    Mesh m; m.name = "Fountain";
-    Mesh basin = create_organic_cylinder(size*0.5f, size*0.15f, 20, seed, 0.05f);
-    merge_mesh(m, basin, vec3(0));
-    Mesh pillar = create_organic_cylinder(size*0.05f, size*0.4f, 8, seed+5.0f, 0.1f);
-    merge_mesh(m, pillar, vec3(0, size*0.2f, 0));
-    Mesh top = create_organic_cylinder(size*0.2f, size*0.08f, 16, seed+10.0f, 0.08f);
-    merge_mesh(m, top, vec3(0, size*0.42f, 0));
-    for (int i = 0; i < 4; i++) {
-        float a = (float)i*(float)M_PI*0.5f+0.2f;
-        Mesh spout = create_organic_cylinder(size*0.015f, size*0.08f, 6, seed+i*3.0f, 0.1f);
-        bend_mesh(spout, 0.5f, vec3(0,0,1));
-        merge_mesh(m, spout, vec3(cosf(a)*size*0.15f, size*0.45f, sinf(a)*size*0.15f));
-    }
-    for (auto& v : m.vertices) {
-        float cv = 0.55f+0.08f*noise3d(v.position.x*4.0f+seed, v.position.y*4.0f, v.position.z*4.0f);
-        v.color = vec4(cv, cv*0.95f, cv*0.9f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_cart_mesh(float size, float seed) {
-    Mesh m; m.name = "Cart";
-    Mesh body = create_cube(size*0.6f);
-    for (auto& v : body.vertices) { v.position = vec3(v.position.x*1.2f, v.position.y*0.5f, v.position.z*0.8f); }
-    merge_mesh(m, body, vec3(0, size*0.25f, 0));
-    for (int i = 0; i < 2; i++) {
-        Mesh wheel = create_torus(size*0.13f, size*0.03f, 16, 8);
-        for (auto& v : wheel.vertices) std::swap(v.position.y, v.position.z);
-        merge_mesh(m, wheel, vec3((i==0?-1.0f:1.0f)*size*0.3f, size*0.08f, 0));
-    }
-    Mesh handle = create_tapered_cylinder(size*0.02f, size*0.025f, size*0.6f, 6);
-    bend_mesh(handle, 0.3f, vec3(0,0,1));
-    merge_mesh(m, handle, vec3(0, size*0.35f, size*0.45f));
-    for (auto& v : m.vertices) {
-        float cv = noise2d(v.position.x*6.0f+seed, v.position.z*6.0f)*0.06f;
-        v.color = vec4(0.5f+cv, 0.33f+cv*0.5f, 0.15f+cv*0.3f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_crate_mesh(float size, float seed) {
-    Mesh m; m.name = "Crate";
-    Mesh body = create_cube(size*0.8f);
-    for (auto& v : body.vertices) {
-        float n = fbm3d(v.position.x*8.0f+seed, v.position.y*8.0f, v.position.z*8.0f, 3)*0.003f;
-        v.position += v.normal * n;
-    }
-    merge_mesh(m, body, vec3(0));
-    for (int i = 0; i < 2; i++) {
-        Mesh plank = create_cube(1.0f);
-        float sz = (i==0) ? size*0.02f : size*0.02f;
-        for (auto& v : plank.vertices) v.position = vec3(v.position.x*size*0.82f, v.position.y*sz, v.position.z*size*0.42f);
-        merge_mesh(m, plank, vec3(0, (i==0?1.0f:-1.0f)*size*0.41f, 0));
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise2d(v.position.x*10.0f+seed, v.position.y*10.0f)*0.06f;
-        v.color = vec4(0.5f+cv, 0.35f+cv*0.5f, 0.15f+cv*0.3f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_lantern_mesh(float size, float seed) {
-    Mesh m; m.name = "Lantern";
-    Mesh post = create_organic_cylinder(size*0.03f, size*0.8f, 8, seed, 0.05f);
-    merge_mesh(m, post, vec3(0, size*0.3f, 0));
-    Mesh arm = create_tapered_cylinder(size*0.015f, size*0.02f, size*0.2f, 6);
-    bend_mesh(arm, 0.8f, vec3(0,0,1));
-    merge_mesh(m, arm, vec3(size*0.1f, size*0.65f, 0));
-    Mesh housing = create_organic_cylinder(size*0.08f, size*0.12f, 8, seed+5.0f, 0.08f);
-    merge_mesh(m, housing, vec3(size*0.2f, size*0.6f, 0));
-    Mesh cap = create_cone(size*0.07f, size*0.06f, 8);
-    merge_mesh(m, cap, vec3(size*0.2f, size*0.69f, 0));
-    for (auto& v : m.vertices) {
-        float cv = noise2d(v.position.x*8.0f+seed, v.position.y*8.0f)*0.05f;
-        v.color = vec4(0.25f+cv, 0.25f+cv, 0.28f+cv, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_gun_mesh(float size, float seed) {
-    Mesh m; m.name = "Gun";
-    Mesh barrel = create_organic_cylinder(size*0.03f, size*0.4f, 8, seed, 0.03f);
-    merge_mesh(m, barrel, vec3(0, size*0.08f, 0));
-    Mesh receiver = create_cube(size*0.15f);
-    for (auto& v : receiver.vertices) v.position = vec3(v.position.x, v.position.y*0.6f, v.position.z*0.8f);
-    merge_mesh(m, receiver, vec3(0, size*0.04f, 0));
-    Mesh grip = create_cube(size*0.08f);
-    for (auto& v : grip.vertices) v.position = vec3(v.position.x*0.6f, v.position.y, v.position.z*0.8f);
-    merge_mesh(m, grip, vec3(0, -size*0.06f, -size*0.02f));
-    Mesh scope = create_organic_cylinder(size*0.02f, size*0.12f, 6, seed+3.0f, 0.05f);
-    merge_mesh(m, scope, vec3(0, size*0.13f, 0));
-    Mesh muzzle = create_cone(size*0.035f, size*0.04f, 8);
-    for (auto& v : muzzle.vertices) std::swap(v.position.y, v.position.z);
-    merge_mesh(m, muzzle, vec3(0, size*0.08f, size*0.22f));
-    for (auto& v : m.vertices) {
-        float cv = noise3d(v.position.x*10.0f+seed, v.position.y*10.0f, v.position.z*10.0f)*0.04f;
-        v.color = vec4(0.3f+cv, 0.32f+cv, 0.35f+cv, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_scifi_turret_mesh(float size, float seed) {
-    Mesh m; m.name = "Turret";
-    Mesh base = create_organic_cylinder(size*0.25f, size*0.1f, 16, seed, 0.05f);
-    merge_mesh(m, base, vec3(0, 0, 0));
-    Mesh body = create_organic_cylinder(size*0.15f, size*0.25f, 12, seed+5.0f, 0.08f);
-    merge_mesh(m, body, vec3(0, size*0.17f, 0));
-    Mesh b1 = create_organic_cylinder(size*0.03f, size*0.35f, 8, seed+10.0f, 0.04f);
-    merge_mesh(m, b1, vec3(size*0.08f, size*0.3f, 0));
-    Mesh b2 = create_organic_cylinder(size*0.03f, size*0.35f, 8, seed+12.0f, 0.04f);
-    merge_mesh(m, b2, vec3(-size*0.08f, size*0.3f, 0));
-    Mesh sensor = create_organic_sphere(size*0.05f, 8, 6, seed+15.0f, 0.1f);
-    merge_mesh(m, sensor, vec3(0, size*0.33f, size*0.12f));
-    for (auto& v : m.vertices) {
-        float cv = noise3d(v.position.x*6.0f+seed, v.position.y*6.0f, v.position.z*6.0f)*0.04f;
-        v.color = vec4(0.4f+cv, 0.42f+cv, 0.45f+cv, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_crystal_mesh(float size, float seed) {
-    Mesh m; m.name = "Crystal";
-    int cnt = 4 + (int)(noise2d(seed, 0.0f)*3.0f + 3.0f);
-    for (int i = 0; i < cnt; i++) {
-        float cs = size*(0.2f+0.3f*noise2d(seed+i, 1.0f));
-        float h = cs*(2.0f+1.5f*noise2d(seed+i, 2.0f));
-        Mesh shard = create_organic_cylinder(cs*0.15f, h, 6, seed+i*7.0f, 0.05f);
-        float a = noise2d(seed+i, 3.0f)*(float)M_PI*2.0f;
-        float tilt = noise2d(seed+i, 4.0f)*0.3f;
-        bend_mesh(shard, tilt, vec3(1,0,0));
-        merge_mesh(m, shard, vec3(cosf(a)*size*0.15f*noise2d(seed+i,5.0f), h*0.5f, sinf(a)*size*0.15f*noise2d(seed+i,6.0f)));
-    }
-    for (auto& v : m.vertices) {
-        float hue = noise3d(v.position.x*3.0f+seed, v.position.y*3.0f, v.position.z*3.0f);
-        v.color = vec4(0.4f+hue*0.3f, 0.5f+hue*0.2f, 0.9f+hue*0.1f, 0.85f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_coral_mesh(float size, float seed) {
-    Mesh m; m.name = "Coral";
-    int branches = 5 + (int)(noise2d(seed, 0.0f)*3.0f + 3.0f);
-    for (int i = 0; i < branches; i++) {
-        float bh = size*(0.3f+0.4f*noise2d(seed+i, 1.0f));
-        Mesh branch = create_organic_cylinder(size*0.04f, bh, 6, seed+i*5.0f, 0.15f);
-        float a = (float)i/branches*(float)M_PI*2.0f+noise2d(seed+i,2.0f)*0.5f;
-        bend_mesh(branch, 0.2f+0.3f*noise2d(seed+i,3.0f), vec3(sinf(a),0,cosf(a)));
-        merge_mesh(m, branch, vec3(cosf(a)*size*0.1f, bh*0.5f, sinf(a)*size*0.1f));
-        Mesh tip = create_organic_sphere(size*0.05f, 6, 4, seed+i*9.0f, 0.2f);
-        merge_mesh(m, tip, vec3(cosf(a)*size*0.15f, bh, sinf(a)*size*0.15f));
-    }
-    for (auto& v : m.vertices) {
-        float hue = noise3d(v.position.x*4.0f+seed, v.position.y*4.0f, v.position.z*4.0f);
-        v.color = vec4(0.9f+hue*0.1f, 0.4f+hue*0.3f, 0.4f+hue*0.2f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_butterfly_mesh(float size, float seed) {
-    Mesh m; m.name = "Butterfly";
-    Mesh body = create_organic_cylinder(size*0.02f, size*0.15f, 6, seed, 0.05f);
-    merge_mesh(m, body, vec3(0));
-    Mesh head = create_organic_sphere(size*0.025f, 8, 6, seed+1.0f, 0.1f);
-    merge_mesh(m, head, vec3(0, size*0.09f, 0));
-    for (int side = -1; side <= 1; side += 2) {
-        Mesh wing = create_organic_sphere(size*0.2f, 10, 8, seed+side*3.0f, 0.15f);
-        for (auto& v : wing.vertices) v.position = vec3(v.position.x*0.3f, v.position.y*0.1f, v.position.z*1.0f);
-        bend_mesh(wing, 0.1f*side, vec3(0,0,1));
-        merge_mesh(m, wing, vec3(side*size*0.08f, size*0.05f, 0));
-        Mesh lower = create_organic_sphere(size*0.12f, 8, 6, seed+side*5.0f, 0.15f);
-        for (auto& v : lower.vertices) v.position = vec3(v.position.x*0.3f, v.position.y*0.1f, v.position.z*0.8f);
-        merge_mesh(m, lower, vec3(side*size*0.06f, -size*0.02f, 0));
-    }
-    for (auto& v : m.vertices) {
-        float hue = noise3d(v.position.x*6.0f+seed, v.position.y*6.0f, v.position.z*6.0f);
-        v.color = vec4(0.2f+hue*0.4f, 0.3f+hue*0.3f, 0.8f+hue*0.2f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_cat_mesh(float size, float seed) {
-    Mesh m; m.name = "Cat";
-    Mesh body = create_organic_sphere(size*0.2f, 14, 10, seed, 0.1f);
-    for (auto& v : body.vertices) { v.position.x *= 1.4f; v.position.y *= 0.8f; v.position.z *= 0.9f; }
-    merge_mesh(m, body, vec3(0, size*0.22f, 0));
-    Mesh chest = create_organic_sphere(size*0.12f, 10, 8, seed+1.0f, 0.08f);
-    for (auto& v : chest.vertices) v.position.y *= 0.7f;
-    merge_mesh(m, chest, vec3(size*0.15f, size*0.2f, 0));
-    Mesh head = create_organic_sphere(size*0.12f, 14, 10, seed+2.0f, 0.07f);
-    for (auto& v : head.vertices) { v.position.z *= 1.1f; v.position.y *= 0.95f; }
-    merge_mesh(m, head, vec3(size*0.25f, size*0.38f, 0));
-    Mesh muzzle = create_organic_sphere(size*0.05f, 8, 6, seed+2.5f, 0.08f);
-    for (auto& v : muzzle.vertices) v.position.z *= 1.3f;
-    merge_mesh(m, muzzle, vec3(size*0.33f, size*0.34f, 0));
-    for (int side = -1; side <= 1; side += 2) {
-        Mesh ear = create_pyramid_mesh(size*0.035f, size*0.07f, 3);
-        for (auto& v : ear.vertices) {
-            float n = fbm3d(v.position.x*6.0f+seed, v.position.y*6.0f, v.position.z*6.0f, 3)*0.002f;
-            v.position += v.normal * n;
-        }
-        merge_mesh(m, ear, vec3(size*0.23f, size*0.5f, side*size*0.055f));
-    }
-    Mesh tail = create_organic_cylinder(size*0.02f, size*0.28f, 8, seed+4.0f, 0.12f);
-    bend_mesh(tail, 1.5f, vec3(0,0,1));
-    bend_mesh(tail, 0.3f, vec3(1,0,0));
-    merge_mesh(m, tail, vec3(-size*0.22f, size*0.28f, 0));
-    for (int i = 0; i < 4; i++) {
-        float lx = (i%2==0?-1.0f:1.0f)*size*0.08f;
-        float lz = (i<2?-1.0f:1.0f)*size*0.07f;
-        Mesh paw = create_organic_cylinder(size*0.028f, size*0.1f, 6, seed+i*3.0f, 0.08f);
-        merge_mesh(m, paw, vec3(lx, size*0.05f, lz));
-        Mesh foot = create_organic_sphere(size*0.032f, 6, 4, seed+i*3.0f+50.0f, 0.06f);
-        for (auto& v : foot.vertices) v.position.y *= 0.5f;
-        merge_mesh(m, foot, vec3(lx, size*0.005f, lz+size*0.01f));
-    }
-    Mesh nose = create_organic_sphere(size*0.012f, 6, 4, seed+6.0f, 0.1f);
-    merge_mesh(m, nose, vec3(size*0.37f, size*0.35f, 0));
-    for (int side = -1; side <= 1; side += 2) {
-        Mesh whisker = create_organic_cylinder(size*0.003f, size*0.1f, 4, seed+side*7.0f, 0.05f);
-        for (auto& v : whisker.vertices) std::swap(v.position.y, v.position.z);
-        bend_mesh(whisker, 0.15f*side, vec3(0,0,1));
-        merge_mesh(m, whisker, vec3(size*0.35f, size*0.33f, side*size*0.04f));
-        Mesh whisker2 = create_organic_cylinder(size*0.003f, size*0.08f, 4, seed+side*8.0f, 0.05f);
-        for (auto& v : whisker2.vertices) std::swap(v.position.y, v.position.z);
-        bend_mesh(whisker2, 0.08f*side, vec3(0,0,1));
-        merge_mesh(m, whisker2, vec3(size*0.35f, size*0.32f, side*size*0.05f));
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise3d(v.position.x*6.0f+seed, v.position.y*6.0f, v.position.z*6.0f)*0.08f;
-        float stripe = std::abs(sinf(v.position.y*30.0f+seed))*0.03f;
-        v.color = vec4(0.7f+cv+stripe, 0.5f+cv, 0.3f+cv, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_dog_mesh(float size, float seed) {
-    Mesh m; m.name = "Dog";
-    Mesh body = create_organic_sphere(size*0.22f, 14, 10, seed, 0.09f);
-    for (auto& v : body.vertices) { v.position.x *= 1.5f; v.position.y *= 0.75f; v.position.z *= 0.95f; }
-    merge_mesh(m, body, vec3(0, size*0.2f, 0));
-    Mesh chest = create_organic_sphere(size*0.13f, 10, 8, seed+1.0f, 0.08f);
-    for (auto& v : chest.vertices) v.position.y *= 0.8f;
-    merge_mesh(m, chest, vec3(size*0.18f, size*0.2f, 0));
-    Mesh head = create_organic_sphere(size*0.13f, 12, 8, seed+2.0f, 0.07f);
-    for (auto& v : head.vertices) { v.position.z *= 1.15f; v.position.y *= 0.95f; }
-    merge_mesh(m, head, vec3(size*0.28f, size*0.36f, 0));
-    Mesh snout = create_organic_cylinder(size*0.04f, size*0.1f, 8, seed+3.0f, 0.1f);
-    for (auto& v : snout.vertices) v.position.z *= 1.2f;
-    merge_mesh(m, snout, vec3(size*0.38f, size*0.32f, 0));
-    Mesh nose = create_organic_sphere(size*0.02f, 6, 4, seed+3.5f, 0.1f);
-    for (auto& v : nose.vertices) v.position *= 0.8f;
-    merge_mesh(m, nose, vec3(size*0.44f, size*0.33f, 0));
-    Mesh tongue = create_organic_cylinder(size*0.02f, size*0.06f, 6, seed+3.7f, 0.15f);
-    for (auto& v : tongue.vertices) {
-        v.position.x *= 0.6f;
-    }
-    merge_mesh(m, tongue, vec3(size*0.42f, size*0.28f, 0));
-    for (int side = -1; side <= 1; side += 2) {
-        Mesh ear = create_organic_sphere(size*0.06f, 8, 6, seed+side*3.0f, 0.18f);
-        for (auto& v : ear.vertices) { v.position.y *= 0.4f; v.position.z *= 0.7f; }
-        merge_mesh(m, ear, vec3(size*0.22f, size*0.46f, side*size*0.1f));
-    }
-    Mesh tail = create_organic_cylinder(size*0.022f, size*0.18f, 8, seed+5.0f, 0.12f);
-    bend_mesh(tail, 1.0f, vec3(1,0,0));
-    bend_mesh(tail, 0.2f, vec3(0,0,1));
-    merge_mesh(m, tail, vec3(-size*0.28f, size*0.32f, 0));
-    for (int i = 0; i < 4; i++) {
-        float lx = (i%2==0?-1.0f:1.0f)*size*0.1f;
-        float lz = (i<2?-1.0f:1.0f)*size*0.08f;
-        Mesh leg = create_organic_cylinder(size*0.032f, size*0.13f, 6, seed+i*4.0f, 0.08f);
-        merge_mesh(m, leg, vec3(lx, size*0.065f, lz));
-        Mesh paw = create_organic_sphere(size*0.038f, 6, 4, seed+i*4.0f+50.0f, 0.06f);
-        for (auto& v : paw.vertices) v.position.y *= 0.5f;
-        merge_mesh(m, paw, vec3(lx, size*0.005f, lz+size*0.02f));
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise3d(v.position.x*5.0f+seed, v.position.y*5.0f, v.position.z*5.0f)*0.08f;
-        float patch = noise3d(v.position.x*3.0f+seed+40.0f, v.position.y*3.0f, v.position.z*3.0f)*0.05f;
-        v.color = vec4(0.55f+cv+patch, 0.4f+cv, 0.25f+cv, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_bird_mesh(float size, float seed) {
-    Mesh m; m.name = "Bird";
-    Mesh body = create_organic_sphere(size*0.12f, 14, 10, seed, 0.09f);
-    for (auto& v : body.vertices) {
-        float tx = v.position.x, tz = v.position.z;
-        float blend = (v.position.x / (size*0.12f) + 1.0f) * 0.5f;
-        v.position.x *= lerp(1.0f, 0.8f, blend);
-        v.position.z *= lerp(1.3f, 0.5f, blend);
-        v.position.y *= 0.85f;
-    }
-    merge_mesh(m, body, vec3(0, size*0.12f, 0));
-    Mesh head = create_organic_sphere(size*0.065f, 12, 8, seed+2.0f, 0.07f);
-    merge_mesh(m, head, vec3(size*0.12f, size*0.22f, 0));
-    Mesh beak_top = create_pyramid_mesh(size*0.02f, size*0.055f, 3);
-    for (auto& v : beak_top.vertices) { std::swap(v.position.y, v.position.z); v.position.y *= 0.5f; }
-    merge_mesh(m, beak_top, vec3(size*0.2f, size*0.23f, 0));
-    Mesh beak_bot = create_pyramid_mesh(size*0.015f, size*0.04f, 3);
-    for (auto& v : beak_bot.vertices) { std::swap(v.position.y, v.position.z); v.position.y *= -0.5f; }
-    merge_mesh(m, beak_bot, vec3(size*0.19f, size*0.21f, 0));
-    Mesh eye_l = create_organic_sphere(size*0.01f, 6, 4, seed+2.5f, 0.1f);
-    merge_mesh(m, eye_l, vec3(size*0.16f, size*0.25f, size*0.04f));
-    Mesh eye_r = create_organic_sphere(size*0.01f, 6, 4, seed+2.6f, 0.1f);
-    merge_mesh(m, eye_r, vec3(size*0.16f, size*0.25f, -size*0.04f));
-    for (int side = -1; side <= 1; side += 2) {
-        Mesh wing = create_organic_sphere(size*0.1f, 10, 8, seed+side*3.0f, 0.14f);
-        for (auto& v : wing.vertices) {
-            v.position = vec3(v.position.x*0.25f, v.position.y*0.08f, v.position.z*1.3f);
-        }
-        bend_mesh(wing, 0.2f*side, vec3(0,0,1));
-        merge_mesh(m, wing, vec3(-size*0.02f, size*0.14f, side*size*0.08f));
-        Mesh wing_tip = create_organic_sphere(size*0.04f, 6, 4, seed+side*3.5f, 0.12f);
-        for (auto& v : wing_tip.vertices) {
-            v.position = vec3(v.position.x*0.3f, v.position.y*0.08f, v.position.z*1.5f);
-        }
-        merge_mesh(m, wing_tip, vec3(-size*0.08f, size*0.12f, side*size*0.14f));
-    }
-    Mesh tailf = create_organic_sphere(size*0.04f, 8, 6, seed+6.0f, 0.12f);
-    for (auto& v : tailf.vertices) { v.position.x *= 0.5f; v.position.z *= 2.2f; v.position.y *= 0.6f; }
-    merge_mesh(m, tailf, vec3(-size*0.16f, size*0.16f, 0));
-    Mesh tail2 = create_organic_sphere(size*0.025f, 6, 4, seed+6.5f, 0.1f);
-    for (auto& v : tail2.vertices) { v.position.x *= 0.4f; v.position.z *= 1.8f; }
-    merge_mesh(m, tail2, vec3(-size*0.2f, size*0.18f, size*0.03f));
-    for (int side = -1; side <= 1; side += 2) {
-        Mesh leg = create_organic_cylinder(size*0.008f, size*0.08f, 4, seed+side*10.0f, 0.1f);
-        merge_mesh(m, leg, vec3(size*0.02f, size*0.04f, side*size*0.03f));
-        Mesh foot_mesh = create_organic_cylinder(size*0.005f, size*0.03f, 4, seed+side*11.0f, 0.1f);
-        for (auto& v : foot_mesh.vertices) std::swap(v.position.y, v.position.z);
-        merge_mesh(m, foot_mesh, vec3(size*0.03f, size*0.0f, side*size*0.03f));
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise3d(v.position.x*8.0f+seed, v.position.y*8.0f, v.position.z*8.0f)*0.1f;
-        float belly = smoothstep(-0.02f, 0.05f, v.position.y / size - 0.08f);
-        v.color = vec4(0.25f+cv+belly*0.3f, 0.45f+cv*0.5f+belly*0.2f, 0.75f+cv*0.3f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_tree_stump_mesh(float size, float seed) {
-    Mesh m; m.name = "Stump";
-    Mesh trunk = create_tapered_cylinder(size*0.2f, size*0.25f, size*0.3f, 10);
-    for (auto& v : trunk.vertices) {
-        float bark = fbm3d(v.position.x*8.0f+seed, v.position.y*4.0f, v.position.z*8.0f, 4)*size*0.02f;
-        v.position += v.normal * bark;
-    }
-    merge_mesh(m, trunk, vec3(0, size*0.15f, 0));
-    Mesh top = create_organic_cylinder(size*0.2f, size*0.02f, 16, seed+5.0f, 0.03f);
-    merge_mesh(m, top, vec3(0, size*0.31f, 0));
-    for (int i = 0; i < 3; i++) {
-        float a = (float)i*(float)M_PI*2.0f/3.0f;
-        Mesh root = create_tapered_cylinder(size*0.03f, size*0.06f, size*0.15f, 6);
-        bend_mesh(root, 0.5f, vec3(0,0,1));
-        merge_mesh(m, root, vec3(cosf(a)*size*0.22f, size*0.02f, sinf(a)*size*0.22f));
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise2d(v.position.y*10.0f+seed, v.position.x*10.0f)*0.08f;
-        v.color = vec4(0.4f+cv, 0.25f+cv*0.5f, 0.1f+cv*0.3f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_rock_wall_mesh(float size, float seed) {
-    Mesh m; m.name = "RockWall";
-    for (int row = 0; row < 3; row++) {
-        int cols = 3 + (row % 2);
-        for (int col = 0; col < cols; col++) {
-            float w = size*(0.25f+0.05f*noise2d(seed+row*10+col, 0));
-            float h = size*(0.12f+0.03f*noise2d(seed+row*10+col, 1));
-            Mesh stone = create_stone(w*0.5f, seed+row*10+col);
-            for (auto& v : stone.vertices) { v.position.x *= w/size; v.position.y *= h/size; v.position.z *= 0.6f; }
-            float xoff = (col - cols*0.5f)*size*0.28f + noise2d(seed+row*10+col, 2)*size*0.03f;
-            float yoff = row*size*0.22f + noise2d(seed+row*10+col, 3)*size*0.02f;
-            merge_mesh(m, stone, vec3(xoff, yoff, 0));
-        }
-    }
-    for (auto& v : m.vertices) {
-        float cv = 0.5f+0.1f*noise3d(v.position.x*4.0f+seed, v.position.y*4.0f, v.position.z*4.0f);
-        float brown = noise3d(v.position.x*3.0f+seed+88.0f, v.position.y*3.0f, v.position.z*3.0f)*0.05f;
-        v.color = vec4(cv+brown, cv*0.95f+brown*0.3f, cv*0.9f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_grave_mesh(float size, float seed) {
-    Mesh m; m.name = "Grave";
-    Mesh stone = create_organic_cylinder(size*0.2f, size*0.5f, 8, seed, 0.05f);
-    taper_mesh(stone, 0.8f, 1.0f);
-    for (auto& v : stone.vertices) {
-        if (v.position.y > size*0.15f) v.position.x *= 1.0f - (v.position.y-size*0.15f)/(size*0.1f)*0.3f;
-    }
-    merge_mesh(m, stone, vec3(0, size*0.25f, 0));
-    for (auto& v : m.vertices) {
-        float cv = 0.55f+0.08f*noise3d(v.position.x*5.0f+seed, v.position.y*5.0f, v.position.z*5.0f);
-        v.color = vec4(cv, cv*0.95f, cv*0.9f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_flag_mesh(float size, float seed) {
-    Mesh m; m.name = "Flag";
-    Mesh pole = create_organic_cylinder(size*0.02f, size*0.8f, 6, seed, 0.03f);
-    merge_mesh(m, pole, vec3(0, size*0.4f, 0));
-    Mesh cloth = create_plane(size*0.4f, 8);
-    for (auto& v : cloth.vertices) {
-        float wave = sinf(v.position.x*6.0f+v.position.y*3.0f)*size*0.03f + noise2d(v.position.x*4.0f+seed, v.position.y*4.0f)*size*0.02f;
-        v.position.z += wave;
-    }
-    merge_mesh(m, cloth, vec3(size*0.2f, size*0.6f, 0));
-    for (auto& v : m.vertices) {
-        if (v.position.z > size*0.01f) {
-            float cv = noise2d(v.position.x*8.0f+seed, v.position.y*8.0f)*0.1f;
-            v.color = vec4(0.8f+cv, 0.15f+cv, 0.1f+cv, 1.0f);
+    for (int r = 0; r < ring; r++) {
+        for (int s = 0; s < seg; s++) {
+            uint32_t i0 = r * (seg + 1) + s;
+            m.add_face({i0, i0 + (uint32_t)(seg + 1), i0 + (uint32_t)(seg + 2), i0 + 1});
         }
     }
     m.compute_normals();
     return m;
 }
 
-Mesh ProceduralEngine::create_bookshelf_mesh(float size, float seed) {
-    Mesh m; m.name = "Bookshelf";
-    Mesh frame = create_cube(size*0.6f);
-    for (auto& v : frame.vertices) v.position = vec3(v.position.x, v.position.y*1.2f, v.position.z*0.3f);
-    for (auto& v : frame.vertices) {
-        float n = fbm3d(v.position.x*6.0f+seed, v.position.y*6.0f, v.position.z*6.0f, 3)*0.003f;
-        v.position += v.normal * n;
-    }
-    merge_mesh(m, frame, vec3(0, size*0.6f, 0));
-    for (int row = 0; row < 3; row++) {
-        float shelf_y = size*0.25f + row*size*0.35f;
-        for (int b = 0; b < 4; b++) {
-            float bw = size*(0.04f+0.02f*noise2d(seed+row*10+b, 0));
-            float bh = size*(0.15f+0.08f*noise2d(seed+row*10+b, 1));
-            Mesh book = create_cube(1.0f);
-            for (auto& v : book.vertices) v.position = vec3(v.position.x*bw, v.position.y*bh, v.position.z*size*0.2f);
-            float xoff = -size*0.2f + b*size*0.1f + noise2d(seed+row*10+b, 2)*size*0.02f;
-            merge_mesh(m, book, vec3(xoff, shelf_y+bh*0.5f+size*0.02f, 0));
+// ---- BOX ----
+Mesh ParametricBuilder::build_box(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamBox" : vol.name;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    vec3 s = vol.scale;
+
+    struct FaceDef { vec3 normal; vec3 up; vec3 right; };
+    FaceDef faces[6] = {
+        { vec3(0,0,1),  vec3(0,1,0),  vec3(1,0,0) },   // front
+        { vec3(0,0,-1), vec3(0,1,0),  vec3(-1,0,0) },  // back
+        { vec3(1,0,0),  vec3(0,1,0),  vec3(0,0,-1) },  // right
+        { vec3(-1,0,0), vec3(0,1,0),  vec3(0,0,1) },   // left
+        { vec3(0,1,0),  vec3(0,0,-1), vec3(1,0,0) },   // top
+        { vec3(0,-1,0), vec3(0,0,1),  vec3(1,0,0) },   // bottom
+    };
+
+    float hx = s.x * 0.5f, hy = s.y * 0.5f, hz = s.z * 0.5f;
+    float half[3] = {hx, hy, hz};
+
+    for (int f = 0; f < 6; f++) {
+        int axis = f / 2;
+        float h = half[axis];
+        uint32_t base = (uint32_t)m.vertices.size();
+        for (int vy = 0; vy <= 1; vy++) {
+            for (int vx = 0; vx <= 1; vx++) {
+                float u = (float)vx * 2.0f - 1.0f;
+                float v_ = (float)vy * 2.0f - 1.0f;
+                vec3 local(0);
+                if (axis == 0) { local = vec3(h * (f % 2 == 0 ? 1.0f : -1.0f), v_ * half[1], u * half[2]); }
+                else if (axis == 1) { local = vec3(u * half[0], h * (f % 2 == 0 ? 1.0f : -1.0f), v_ * half[2]); }
+                else { local = vec3(u * half[0], v_ * half[1], h * (f % 2 == 0 ? 1.0f : -1.0f)); }
+
+                float n = vol_noise(local.x * ns, local.y * ns, local.z * ns, seed + f * 7.0f);
+                local += faces[f].normal * n * na;
+                vec2 uv((float)vx, (float)vy);
+                m.add_vertex(local, faces[f].normal, uv);
+            }
         }
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise3d(v.position.x*8.0f+seed, v.position.y*8.0f, v.position.z*8.0f)*0.08f;
-        v.color = vec4(0.45f+cv, 0.3f+cv*0.5f, 0.15f+cv*0.3f, 1.0f);
+        m.add_face({base, base + 1, base + 3, base + 2});
     }
     m.compute_normals();
     return m;
 }
 
-Mesh ProceduralEngine::create_potion_mesh(float size, float seed) {
-    Mesh m; m.name = "Potion";
-    Mesh bottle = create_organic_cylinder(size*0.08f, size*0.25f, 10, seed, 0.06f);
-    taper_mesh(bottle, 0.6f, 1.0f);
-    merge_mesh(m, bottle, vec3(0, size*0.15f, 0));
-    Mesh neck = create_organic_cylinder(size*0.025f, size*0.08f, 6, seed+5.0f, 0.05f);
-    merge_mesh(m, neck, vec3(0, size*0.32f, 0));
-    Mesh cork = create_cylinder(size*0.03f, size*0.04f, 6);
-    merge_mesh(m, cork, vec3(0, size*0.38f, 0));
-    Mesh liquid = create_organic_cylinder(size*0.07f, size*0.12f, 8, seed+10.0f, 0.04f);
-    merge_mesh(m, liquid, vec3(0, size*0.12f, 0));
-    for (auto& v : m.vertices) {
-        float hue = noise3d(v.position.x*5.0f+seed, v.position.y*5.0f, v.position.z*5.0f);
-        v.color = vec4(0.3f+hue*0.3f, 0.1f+hue*0.2f, 0.8f+hue*0.2f, 0.8f);
-    }
-    m.compute_normals();
-    return m;
-}
+// ---- CYLINDER ----
+Mesh ParametricBuilder::build_cylinder(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamCyl" : vol.name;
+    int seg = vol.segments;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float rad = vol.params.cylinder.radius;
+    float h = vol.params.cylinder.height;
+    float hh = h * 0.5f;
 
-Mesh ProceduralEngine::create_campfire_mesh(float size, float seed) {
-    Mesh m; m.name = "Campfire";
-    for (int i = 0; i < 8; i++) {
-        float a = (float)i*(float)M_PI*2.0f/8.0f + noise2d(seed+i, 0)*0.3f;
-        float r = size*0.3f + noise2d(seed+i, 1)*size*0.05f;
-        Mesh stone = create_stone(size*0.08f*(1.0f+noise2d(seed+i, 2)*0.3f), seed+i*5.0f);
-        merge_mesh(m, stone, vec3(cosf(a)*r, size*0.04f, sinf(a)*r));
-    }
-    for (int i = 0; i < 3; i++) {
-        float a = (float)i*(float)M_PI*2.0f/3.0f + noise2d(seed+i, 3)*0.5f;
-        Mesh logpiece = create_log(size*0.04f, size*0.35f, seed+i*7.0f);
-        bend_mesh(logpiece, 0.1f, vec3(1,0,0));
-        merge_mesh(m, logpiece, vec3(cosf(a)*size*0.08f, size*0.08f, sinf(a)*size*0.08f));
-    }
-    for (auto& v : m.vertices) {
-        float cv = noise3d(v.position.x*6.0f+seed, v.position.y*6.0f, v.position.z*6.0f)*0.08f;
-        v.color = vec4(0.45f+cv, 0.3f+cv*0.5f, 0.15f+cv*0.3f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_throne_mesh(float size, float seed) {
-    Mesh m; m.name = "Throne";
-    Mesh seat = create_cube(size*0.5f);
-    for (auto& v : seat.vertices) v.position = vec3(v.position.x, v.position.y*0.08f, v.position.z*0.5f);
-    for (auto& v : seat.vertices) {
-        float n = fbm3d(v.position.x*6.0f+seed, v.position.y*6.0f, v.position.z*6.0f, 3)*0.003f;
-        v.position += v.normal * n;
-    }
-    merge_mesh(m, seat, vec3(0, size*0.2f, 0));
-    Mesh back = create_cube(size*0.5f);
-    for (auto& v : back.vertices) v.position = vec3(v.position.x, v.position.y*0.8f, v.position.z*0.06f);
-    for (auto& v : back.vertices) {
-        if (v.position.y > size*0.2f) v.position.x *= 1.0f - (v.position.y-size*0.2f)/(size*0.3f)*0.15f;
-    }
-    merge_mesh(m, back, vec3(0, size*0.6f, -size*0.22f));
-    for (int side = -1; side <= 1; side += 2) {
-        Mesh arm = create_cube(size*0.1f);
-        for (auto& v : arm.vertices) v.position = vec3(v.position.x*0.3f, v.position.y, v.position.z*0.4f);
-        merge_mesh(m, arm, vec3(side*size*0.28f, size*0.35f, -size*0.05f));
-        Mesh finial = create_organic_sphere(size*0.05f, 8, 6, seed+side*3.0f, 0.1f);
-        merge_mesh(m, finial, vec3(side*size*0.28f, size*0.45f, size*0.1f));
-    }
-    for (int i = 0; i < 4; i++) {
-        float lx = (i%2==0?-1.0f:1.0f)*size*0.2f, lz = (i<2?-1.0f:1.0f)*size*0.18f;
-        Mesh leg = create_tapered_cylinder(size*0.03f, size*0.04f, size*0.2f, 6);
-        merge_mesh(m, leg, vec3(lx, size*0.1f, lz));
-    }
-    Mesh crown = create_pyramid_mesh(size*0.12f, size*0.1f, 5);
-    merge_mesh(m, crown, vec3(0, size*1.05f, -size*0.22f));
-    for (auto& v : m.vertices) {
-        float cv = noise3d(v.position.x*5.0f+seed, v.position.y*5.0f, v.position.z*5.0f)*0.06f;
-        v.color = vec4(0.5f+cv, 0.35f+cv*0.5f, 0.15f+cv*0.3f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-Mesh ProceduralEngine::create_altar_mesh(float size, float seed) {
-    Mesh m; m.name = "Altar";
-    Mesh base = create_organic_cylinder(size*0.3f, size*0.1f, 16, seed, 0.04f);
-    merge_mesh(m, base, vec3(0, 0.0f, 0));
-    Mesh pillar = create_organic_cylinder(size*0.22f, size*0.3f, 12, seed+5.0f, 0.06f);
-    merge_mesh(m, pillar, vec3(0, size*0.2f, 0));
-    Mesh top = create_organic_cylinder(size*0.35f, size*0.06f, 16, seed+10.0f, 0.03f);
-    merge_mesh(m, top, vec3(0, size*0.38f, 0));
-    for (auto& v : m.vertices) {
-        float cv = 0.55f+0.08f*noise3d(v.position.x*4.0f+seed, v.position.y*4.0f, v.position.z*4.0f);
-        v.color = vec4(cv, cv*0.95f, cv*0.9f, 1.0f);
-    }
-    m.compute_normals();
-    return m;
-}
-
-// ============================================================
-// INTERNAL MESH HELPERS
-// ============================================================
-
-Mesh ProceduralEngine::create_tapered_cylinder(float r_top, float r_bot, float height, int seg) {
-    Mesh m; m.name = "TaperedCyl";
-    float hh = height * 0.5f;
+    // Side vertices: top ring + bottom ring
     for (int i = 0; i <= seg; i++) {
         float theta = 2.0f * (float)M_PI * i / seg;
         float ct = cosf(theta), st = sinf(theta);
-        vec3 nrm = glm::normalize(vec3(ct * height, (r_bot - r_top), st * height));
-        m.add_vertex(vec3(ct * r_top, hh, st * r_top), vec3(0, 1, 0), vec2((float)i / seg, 1));
-        m.add_vertex(vec3(ct * r_bot, -hh, st * r_bot), vec3(0, -1, 0), vec2((float)i / seg, 0));
-        m.add_vertex(vec3(ct * r_bot, -hh, st * r_bot), nrm, vec2((float)i / seg, 0));
-        m.add_vertex(vec3(ct * r_top, hh, st * r_top), nrm, vec2((float)i / seg, 1));
+        float n_top = vol_noise(ct * ns, hh * ns, st * ns, seed);
+        float n_bot = vol_noise(ct * ns, -hh * ns, st * ns, seed + 5.0f);
+        float rt = rad * (1.0f + n_top * na);
+        float rb = rad * (1.0f + n_bot * na);
+        vec3 nrm_side = glm::normalize(vec3(ct * h, (rb - rt), st * h));
+        m.add_vertex(vec3(ct * rt, hh, st * rt), vec3(0, 1, 0), vec2((float)i / seg, 1.0f));
+        m.add_vertex(vec3(ct * rb, -hh, st * rb), vec3(0, -1, 0), vec2((float)i / seg, 0.0f));
+        m.add_vertex(vec3(ct * rb, -hh, st * rb), nrm_side, vec2((float)i / seg, 0.0f));
+        m.add_vertex(vec3(ct * rt, hh, st * rt), nrm_side, vec2((float)i / seg, 1.0f));
     }
     for (int i = 0; i < seg; i++) {
         int b = i * 4;
-        m.add_face({(uint32_t)b, (uint32_t)(b+4), (uint32_t)(b+5), (uint32_t)(b+1)});
-        m.add_face({(uint32_t)(b+2), (uint32_t)(b+3), (uint32_t)(b+7), (uint32_t)(b+6)});
+        m.add_face({(uint32_t)b, (uint32_t)(b + 4), (uint32_t)(b + 5), (uint32_t)(b + 1)});
+        m.add_face({(uint32_t)(b + 2), (uint32_t)(b + 3), (uint32_t)(b + 7), (uint32_t)(b + 6)});
     }
+
+    // Top cap
     uint32_t tc = (uint32_t)m.vertices.size();
     m.add_vertex(vec3(0, hh, 0), vec3(0, 1, 0));
+    for (int i = 0; i < seg; i++) {
+        m.add_face({tc, (uint32_t)(i * 4), (uint32_t)(((i + 1) % (seg + 1)) * 4)});
+    }
+
+    // Bottom cap
     uint32_t bc = (uint32_t)m.vertices.size();
     m.add_vertex(vec3(0, -hh, 0), vec3(0, -1, 0));
     for (int i = 0; i < seg; i++) {
-        m.add_face({tc, (uint32_t)(i*4), (uint32_t)(((i+1)%(seg+1))*4)});
-        m.add_face({bc, (uint32_t)(((i+1)%(seg+1))*4+1), (uint32_t)(i*4+1)});
+        m.add_face({bc, (uint32_t)(((i + 1) % (seg + 1)) * 4 + 1), (uint32_t)(i * 4 + 1)});
     }
+
     m.compute_normals();
     return m;
 }
 
-Mesh ProceduralEngine::create_pyramid_mesh(float base_size, float height, int sides) {
-    Mesh m; m.name = "Pyramid";
-    float hs = base_size * 0.5f;
-    uint32_t tip = m.add_vertex(vec3(0, height, 0), vec3(0, 1, 0));
-    uint32_t center = m.add_vertex(vec3(0, 0, 0), vec3(0, -1, 0));
-    for (int i = 0; i <= sides; i++) {
-        float a = 2.0f * (float)M_PI * i / sides;
-        m.add_vertex(vec3(cosf(a) * hs, 0, sinf(a) * hs), vec3(0, -1, 0));
-    }
-    for (int i = 0; i < sides; i++) {
-        m.add_face({tip, (uint32_t)(i + 2), (uint32_t)(i + 3)});
-        m.add_face({center, (uint32_t)(i + 4), (uint32_t)(i + 3)});
-    }
-    m.compute_normals();
-    return m;
-}
+// ---- CONE ----
+Mesh ParametricBuilder::build_cone(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamCone" : vol.name;
+    int seg = vol.segments;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float rad = vol.params.cone.radius;
+    float h = vol.params.cone.height;
+    float hh = h * 0.5f;
 
-Mesh ProceduralEngine::create_star_mesh(float size) {
-    Mesh m; m.name = "Star";
-    float inner = size * 0.2f, outer = size * 0.5f;
-    uint32_t top = m.add_vertex(vec3(0, size * 0.05f, 0), vec3(0, 1, 0));
-    uint32_t bot = m.add_vertex(vec3(0, -size * 0.05f, 0), vec3(0, -1, 0));
-    for (int i = 0; i < 10; i++) {
-        float a = (float)M_PI * 0.5f + i * (float)M_PI / 5.0f;
-        float r = (i % 2 == 0) ? outer : inner;
-        m.add_vertex(vec3(cosf(a) * r, 0, sinf(a) * r), vec3(0, 1, 0));
-    }
-    for (int i = 0; i < 10; i++) {
-        int next = (i + 1) % 10;
-        m.add_face({top, (uint32_t)(i + 2), (uint32_t)(next + 2)});
-        m.add_face({bot, (uint32_t)(next + 2), (uint32_t)(i + 2)});
-    }
-    m.compute_normals();
-    return m;
-}
+    // Tip vertex
+    uint32_t tip = (uint32_t)m.vertices.size();
+    m.add_vertex(vec3(0, hh, 0), vec3(0, 1, 0));
 
-Mesh ProceduralEngine::create_heart_mesh(float size) {
-    Mesh m; m.name = "Heart";
-    int segs = 24, rings = 16;
-    for (int r = 0; r <= rings; r++) {
-        float phi = (float)M_PI * r / rings;
-        for (int s = 0; s <= segs; s++) {
-            float theta = 2.0f * (float)M_PI * s / segs;
-            float x = 16.0f * powf(sinf(phi), 3.0f) * sinf(theta) / 100.0f;
-            float y = (13.0f * cosf(phi) - 5.0f * cosf(2 * phi) - 2.0f * cosf(3 * phi) - cosf(4 * phi)) / 100.0f;
-            float z = 16.0f * powf(sinf(phi), 3.0f) * cosf(theta) / 100.0f;
-            vec3 pos(x * size, y * size, z * size);
-            m.add_vertex(pos, glm::normalize(pos + vec3(0.01f)), vec2((float)s / segs, (float)r / rings));
+    // Side rings (3 rings for detail)
+    for (int ring = 0; ring <= 2; ring++) {
+        float t = (float)ring / 2.0f;
+        float r = rad * (1.0f - t);
+        float y = hh - t * h;
+        for (int i = 0; i <= seg; i++) {
+            float theta = 2.0f * (float)M_PI * i / seg;
+            float ct = cosf(theta), st = sinf(theta);
+            float n = vol_noise(ct * ns, y * ns, st * ns, seed + ring * 3.0f);
+            float rr = r * (1.0f + n * na);
+            vec3 pos(ct * rr, y, st * rr);
+            vec3 nrm = glm::normalize(vec3(ct * h / rad, 1.0f, st * h / rad));
+            m.add_vertex(pos, nrm, vec2((float)i / seg, 1.0f - t));
         }
     }
-    for (int r = 0; r < rings; r++) for (int s = 0; s < segs; s++) {
-        uint32_t i0 = r * (segs + 1) + s;
-        m.add_face({i0, i0 + (uint32_t)(segs + 1), i0 + (uint32_t)(segs + 2), i0 + 1});
-    }
-    m.compute_normals();
-    return m;
-}
 
-Mesh ProceduralEngine::create_skull_mesh(float size) {
-    Mesh m; m.name = "Skull";
-    int segs = 20, rings = 16;
-    for (int r = 0; r <= rings; r++) {
-        float phi = (float)M_PI * r / rings;
-        for (int s = 0; s <= segs; s++) {
-            float theta = 2.0f * (float)M_PI * s / segs;
-            float ct = cosf(theta), st = sinf(theta);
-            float cp = cosf(phi);
-            float cr = 1.0f;
-            if (cp < -0.2f) cr = 0.6f + 0.4f * (cp + 0.2f) / 0.8f;
-            if (cp > 0.3f) cr = 1.0f - (cp - 0.3f) / 0.7f * 0.4f;
-            float x = size * 0.5f * sinf(phi) * ct * cr;
-            float y = size * 0.55f * cp + size * 0.1f;
-            float z = size * 0.45f * sinf(phi) * st * cr;
-            m.add_vertex(vec3(x, y, z), glm::normalize(vec3(x, y + 0.1f, z)), vec2((float)s / segs, (float)r / rings));
+    // Side faces
+    for (int ring = 0; ring < 2; ring++) {
+        for (int i = 0; i < seg; i++) {
+            uint32_t row1 = 1 + ring * (seg + 1) + i;
+            uint32_t row2 = 1 + (ring + 1) * (seg + 1) + i;
+            m.add_face({row1, row2, row2 + 1, row1 + 1});
         }
     }
-    for (int r = 0; r < rings; r++) for (int s = 0; s < segs; s++) {
-        uint32_t i0 = r * (segs + 1) + s;
-        m.add_face({i0, i0 + (uint32_t)(segs + 1), i0 + (uint32_t)(segs + 2), i0 + 1});
+    // Top cap faces (tip to first ring)
+    for (int i = 0; i < seg; i++) {
+        m.add_face({tip, (uint32_t)(1 + i), (uint32_t)(1 + i + 1)});
     }
+
+    // Bottom cap
+    uint32_t bc = (uint32_t)m.vertices.size();
+    m.add_vertex(vec3(0, -hh, 0), vec3(0, -1, 0));
+    uint32_t bottom_ring = 1 + 2 * (seg + 1);
+    for (int i = 0; i < seg; i++) {
+        m.add_face({bc, (uint32_t)(bottom_ring + i + 1), (uint32_t)(bottom_ring + i)});
+    }
+
     m.compute_normals();
     return m;
 }
 
-Mesh ProceduralEngine::create_brain_mesh(float size) {
-    Mesh m; m.name = "Brain";
-    int segs = 24, rings = 16;
-    for (int r = 0; r <= rings; r++) {
-        float phi = (float)M_PI * r / rings;
-        for (int s = 0; s <= segs; s++) {
-            float theta = 2.0f * (float)M_PI * s / segs;
-            float ct = cosf(theta), st = sinf(theta);
+// ---- TORUS ----
+Mesh ParametricBuilder::build_torus(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamTorus" : vol.name;
+    int seg = vol.segments;
+    int minor_seg = vol.rings;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float R = vol.params.torus.major_r;
+    float r = vol.params.torus.minor_r;
+
+    for (int i = 0; i <= seg; i++) {
+        float theta = 2.0f * (float)M_PI * i / seg;
+        float ct = cosf(theta), st = sinf(theta);
+        for (int j = 0; j <= minor_seg; j++) {
+            float phi = 2.0f * (float)M_PI * j / minor_seg;
             float cp = cosf(phi), sp = sinf(phi);
-            float wave = 1.0f + 0.15f * sinf(8.0f * theta) * sinf(6.0f * phi);
-            float x = size * 0.5f * sp * ct * wave;
-            float y = size * 0.4f * cp;
-            float z = size * 0.45f * sp * st * wave;
-            if (fabsf(ct) < 0.1f && sp > 0.3f) x += (ct > 0 ? 0.02f : -0.02f) * size * sp;
-            m.add_vertex(vec3(x, y, z), glm::normalize(vec3(x, y + 0.01f, z)), vec2((float)s / segs, (float)r / rings));
+            float nx = (R + r * cp) * ct;
+            float ny = r * sp;
+            float nz = (R + r * cp) * st;
+            float n = vol_noise(nx * ns, ny * ns, nz * ns, seed);
+            vec3 pos(nx + n * na * ct, ny + n * na, nz + n * na * st);
+            vec3 nrm = glm::normalize(vec3(cp * ct, sp, cp * st));
+            vec2 uv((float)i / seg, (float)j / minor_seg);
+            m.add_vertex(pos, nrm, uv);
         }
     }
-    for (int r = 0; r < rings; r++) for (int s = 0; s < segs; s++) {
-        uint32_t i0 = r * (segs + 1) + s;
-        m.add_face({i0, i0 + (uint32_t)(segs + 1), i0 + (uint32_t)(segs + 2), i0 + 1});
+    for (int i = 0; i < seg; i++) {
+        for (int j = 0; j < minor_seg; j++) {
+            uint32_t a = i * (minor_seg + 1) + j;
+            uint32_t b = a + (minor_seg + 1);
+            m.add_face({a, b, b + 1, a + 1});
+        }
     }
     m.compute_normals();
     return m;
 }
 
-Mesh ProceduralEngine::create_l_shape(float leg1, float leg2, float thickness) {
-    Mesh m; m.name = "LShape";
-    Mesh a = create_cube(1.0f);
-    for (auto& v : a.vertices)
-        v.position = vec3(v.position.x * thickness, v.position.y * leg1 + leg1 * 0.5f - thickness * 0.5f, v.position.z * thickness);
-    for (auto& v : a.vertices) m.add_vertex(v.position, v.normal, v.uv);
-    for (auto& f : a.faces) { std::vector<uint32_t> fi; for (auto& vi : f.vertices) fi.push_back(vi); m.add_face(fi); }
-    Mesh b = create_cube(1.0f);
-    for (auto& v : b.vertices)
-        v.position = vec3(v.position.x * leg2 + leg2 * 0.5f - thickness * 0.5f, v.position.y * thickness - thickness * 0.5f, v.position.z * thickness);
-    uint32_t off = (uint32_t)m.vertices.size();
-    for (auto& v : b.vertices) m.add_vertex(v.position, v.normal, v.uv);
-    for (auto& f : b.faces) { std::vector<uint32_t> fi; for (auto& vi : f.vertices) fi.push_back(vi + off); m.add_face(fi); }
-    m.weld_vertices(0.001f);
+// ---- CAPSULE ----
+Mesh ParametricBuilder::build_capsule(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamCapsule" : vol.name;
+    int seg = vol.segments;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float rad = vol.params.capsule.radius;
+    float cyl_h = vol.params.capsule.height;
+    float half_cyl = cyl_h * 0.5f;
+
+    // Top hemisphere
+    int h_rings = seg / 3;
+    for (int r = 0; r <= h_rings; r++) {
+        float phi = (float)M_PI * 0.5f * r / h_rings;
+        for (int s = 0; s <= seg; s++) {
+            float theta = 2.0f * (float)M_PI * s / seg;
+            float nx = cosf(theta) * sinf(phi);
+            float ny = cosf(phi);
+            float nz = sinf(theta) * sinf(phi);
+            float n = vol_noise(nx * ns, (ny + 1.0f) * ns, nz * ns, seed);
+            float rr = rad * (1.0f + n * na);
+            vec3 pos(rr * nx, half_cyl + rr * ny, rr * nz);
+            m.add_vertex(pos, glm::normalize(vec3(nx, ny, nz)), vec2((float)s / seg, 1.0f - (float)r / h_rings));
+        }
+    }
+
+    // Bottom hemisphere
+    for (int r = 0; r <= h_rings; r++) {
+        float phi = (float)M_PI * 0.5f + (float)M_PI * 0.5f * r / h_rings;
+        for (int s = 0; s <= seg; s++) {
+            float theta = 2.0f * (float)M_PI * s / seg;
+            float nx = cosf(theta) * sinf(phi);
+            float ny = cosf(phi);
+            float nz = sinf(theta) * sinf(phi);
+            float n = vol_noise(nx * ns, (ny - 1.0f) * ns, nz * ns, seed + 10.0f);
+            float rr = rad * (1.0f + n * na);
+            vec3 pos(rr * nx, -half_cyl + rr * ny, rr * nz);
+            m.add_vertex(pos, glm::normalize(vec3(nx, ny, nz)), vec2((float)s / seg, (float)r / h_rings));
+        }
+    }
+
+    // Top cap vertex
+    m.add_vertex(vec3(0, half_cyl + rad, 0), vec3(0, 1, 0));
+
+    // Bottom cap vertex
+    m.add_vertex(vec3(0, -half_cyl - rad, 0), vec3(0, -1, 0));
+
+    // Connect top hemisphere faces
+    for (int r = 0; r < h_rings; r++) {
+        for (int s = 0; s < seg; s++) {
+            uint32_t a = r * (seg + 1) + s;
+            uint32_t b = (r + 1) * (seg + 1) + s;
+            m.add_face({a, b, b + 1, a + 1});
+        }
+    }
+    // Connect bottom hemisphere faces
+    int bot_start = h_rings * (seg + 1);
+    for (int r = 0; r < h_rings; r++) {
+        for (int s = 0; s < seg; s++) {
+            uint32_t a = bot_start + r * (seg + 1) + s;
+            uint32_t b = bot_start + (r + 1) * (seg + 1) + s;
+            m.add_face({a, b, b + 1, a + 1});
+        }
+    }
+
     m.compute_normals();
     return m;
 }
 
-Mesh ProceduralEngine::create_ring(float outer_r, float inner_r, int segs) {
-    Mesh m; m.name = "Ring";
-    for (int i = 0; i <= segs; i++) {
-        float a = 2.0f * (float)M_PI * i / segs;
-        float ca = cosf(a), sa = sinf(a);
-        m.add_vertex(vec3(ca * outer_r, 0, sa * outer_r), vec3(0, 1, 0), vec2((float)i / segs, 1));
-        m.add_vertex(vec3(ca * inner_r, 0, sa * inner_r), vec3(0, 1, 0), vec2((float)i / segs, 0));
+// ---- HEMISPHERE ----
+Mesh ParametricBuilder::build_hemisphere(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamHemi" : vol.name;
+    int seg = vol.segments;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float rad = vol.params.hemisphere.radius;
+
+    for (int r = 0; r <= seg / 2; r++) {
+        float phi = (float)M_PI * 0.5f * r / (seg / 2);
+        for (int s = 0; s <= seg; s++) {
+            float theta = 2.0f * (float)M_PI * s / seg;
+            float nx = cosf(theta) * sinf(phi);
+            float ny = cosf(phi);
+            float nz = sinf(theta) * sinf(phi);
+            float n = vol_noise(nx * ns, ny * ns, nz * ns, seed);
+            float rr = rad * (1.0f + n * na);
+            m.add_vertex(vec3(rr * nx, rr * ny, rr * nz), glm::normalize(vec3(nx, ny, nz)),
+                         vec2((float)s / seg, (float)r / (seg / 2)));
+        }
     }
-    for (int i = 0; i < segs; i++) {
-        uint32_t a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
-        m.add_face({a, c, d, b});
+    for (int r = 0; r < seg / 2; r++) {
+        for (int s = 0; s < seg; s++) {
+            uint32_t a = r * (seg + 1) + s;
+            m.add_face({a, a + (uint32_t)(seg + 1), a + (uint32_t)(seg + 2), a + 1});
+        }
     }
     m.compute_normals();
     return m;
 }
 
-// ============================================================
-// ORIGINAL SCENE GENERATORS (ORGANIC REWRITE)
-// ============================================================
+// ---- RING ----
+Mesh ParametricBuilder::build_ring(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamRing" : vol.name;
+    int seg = vol.segments;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float inner = vol.params.ring.inner_r;
+    float outer = vol.params.ring.outer_r;
 
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_tree(float height) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-
-    Part trunk; trunk.name = "Trunk";
-    trunk.mesh = create_organic_cylinder(0.1f * height * 0.35f, height * 0.55f, 12, sd, 0.14f);
-    taper_mesh(trunk.mesh, 0.55f, 1.0f);
-    bend_mesh(trunk.mesh, 0.08f * height, vec3(randf()-0.5f, 0, randf()-0.5f));
-    trunk.material.diffuse = vec4(0.38f, 0.24f, 0.1f, 1);
-    trunk.material.roughness = 0.9f; trunk.material.metallic = 0.0f;
-    trunk.material.name = "Bark";
-    trunk.position = vec3(0, height * 0.275f, 0);
-    parts.push_back(trunk);
-
-    for (auto& v : trunk.mesh.vertices) {
-        float cv = noise2d(v.position.y*12.0f+sd, v.position.x*12.0f)*0.08f;
-        v.color = vec4(0.35f+cv, 0.22f+cv*0.5f, 0.08f+cv*0.3f, 1.0f);
+    for (int s = 0; s <= seg; s++) {
+        float theta = 2.0f * (float)M_PI * s / seg;
+        float ct = cosf(theta), st = sinf(theta);
+        float n_in = vol_noise(ct * ns, 0, st * ns, seed);
+        float n_out = vol_noise(ct * ns, 0, st * ns, seed + 5.0f);
+        float ri = inner * (1.0f + n_in * na);
+        float ro = outer * (1.0f + n_out * na);
+        m.add_vertex(vec3(ct * ri, 0, st * ri), vec3(0, 1, 0), vec2((float)s / seg, 0));
+        m.add_vertex(vec3(ct * ro, 0, st * ro), vec3(0, 1, 0), vec2((float)s / seg, 1));
     }
-
-    int main_branches = 3 + (int)(randf() * 3.0f);
-    float branch_start_y = height * 0.35f;
-    for (int i = 0; i < main_branches; i++) {
-        float a = (float)M_PI * 2.0f * i / main_branches + 0.3f + randf() * 0.4f;
-        float bLen = height * (0.2f + 0.12f * randf());
-        float bRad = 0.025f * height * 0.35f * (0.8f + 0.4f * randf());
-        float attach_y = branch_start_y + randf() * height * 0.15f;
-
-        Part b; b.name = "MainBranch_" + std::to_string(i);
-        b.mesh = create_organic_cylinder(bRad, bLen, 8, sd + i * 7.0f, 0.18f);
-        taper_mesh(b.mesh, 0.5f, 1.0f);
-        bend_mesh(b.mesh, 0.3f + randf() * 0.4f, vec3(sinf(a)*0.5f, 0.3f, cosf(a)*0.5f));
-        b.material.diffuse = vec4(0.42f, 0.28f, 0.1f, 1);
-        b.material.roughness = 0.85f; b.material.metallic = 0.0f;
-        b.material.name = "Bark";
-        b.position = vec3(cosf(a) * 0.15f * height * 0.35f, attach_y, sinf(a) * 0.15f * height * 0.35f);
-        b.rotation = vec3(rad2deg(0.4f * cosf(a)), rad2deg(a), rad2deg(0.3f * sinf(a)));
-        parts.push_back(b);
-
-        for (auto& v : b.mesh.vertices) {
-            float cv = noise2d(v.position.y*10.0f+sd+i, v.position.x*10.0f)*0.06f;
-            v.color = vec4(0.4f+cv, 0.26f+cv*0.5f, 0.09f+cv*0.3f, 1.0f);
-        }
-
-        int sub_count = 1 + (int)(randf() * 2.0f);
-        for (int j = 0; j < sub_count; j++) {
-            float sa = a + (randf() - 0.5f) * 1.2f;
-            float sLen = bLen * (0.4f + 0.3f * randf());
-            float sRad = bRad * 0.5f;
-            float t = 0.4f + randf() * 0.5f;
-
-            Part sb; sb.name = "SubBranch_" + std::to_string(i) + "_" + std::to_string(j);
-            sb.mesh = create_organic_cylinder(sRad, sLen, 6, sd + i * 7.0f + j * 13.0f, 0.2f);
-            taper_mesh(sb.mesh, 0.4f, 1.0f);
-            bend_mesh(sb.mesh, 0.4f + randf() * 0.5f, vec3(sinf(sa)*0.5f, 0.4f, cosf(sa)*0.5f));
-            sb.material.diffuse = vec4(0.4f, 0.26f, 0.09f, 1);
-            sb.material.roughness = 0.85f; sb.material.metallic = 0.0f;
-            sb.material.name = "Bark";
-            float bx = cosf(a) * 0.15f * height * 0.35f * t * 2.0f + cosf(sa) * bLen * t * 0.3f;
-            float by = attach_y + bLen * t * 0.3f;
-            float bz = sinf(a) * 0.15f * height * 0.35f * t * 2.0f + sinf(sa) * bLen * t * 0.3f;
-            sb.position = vec3(bx, by, bz);
-            sb.rotation = vec3(rad2deg(0.3f*cosf(sa)), rad2deg(sa), rad2deg(0.3f*sinf(sa)));
-            parts.push_back(sb);
-        }
+    for (int s = 0; s < seg; s++) {
+        uint32_t a = s * 2;
+        m.add_face({a, a + 2, a + 3, a + 1});
     }
-
-    int foliage_count = 5 + (int)(randf() * 4.0f);
-    for (int i = 0; i < foliage_count; i++) {
-        Part l; l.name = "Foliage_" + std::to_string(i);
-        float fsize = height * (0.12f + 0.1f * randf());
-        l.mesh = create_leaf_cluster(fsize, sd + i * 13.0f);
-        l.material.diffuse = vec4(0.08f + 0.06f * randf(), 0.45f + 0.15f * randf(), 0.08f + 0.04f * randf(), 1);
-        l.material.roughness = 0.8f; l.material.metallic = 0.0f;
-        l.material.name = "Leaves";
-        float spread_x = (randf() - 0.5f) * height * 0.35f;
-        float spread_z = (randf() - 0.5f) * height * 0.35f;
-        float fy = height * (0.45f + 0.25f * randf() + (i < foliage_count/2 ? 0.1f : 0.0f));
-        l.position = vec3(spread_x, fy, spread_z);
-        l.rotation = vec3(randf()*20-10, randf()*360, randf()*20-10);
-        parts.push_back(l);
-    }
-
-    return parts;
+    m.compute_normals();
+    return m;
 }
 
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_house(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
+// ---- WEDGE ----
+Mesh ParametricBuilder::build_wedge(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamWedge" : vol.name;
+    int seg = vol.segments;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float rad = vol.params.wedge.radius;
+    float h = vol.params.wedge.height;
+    float angle = vol.params.wedge.angle;
+    float hh = h * 0.5f;
 
-    Part foundation; foundation.name = "Foundation";
-    foundation.mesh = create_cube(1.0f);
-    foundation.material.diffuse = vec4(0.55f, 0.52f, 0.48f, 1); foundation.material.name = "Stone";
-    foundation.material.roughness = 0.9f; foundation.material.metallic = 0.0f;
-    foundation.scale = vec3(1.35f * size, 0.06f * size, 0.95f * size);
-    foundation.position = vec3(0, -size * 0.47f, 0);
-    parts.push_back(foundation);
-
-    Part body; body.name = "Walls";
-    body.mesh = create_cube(1.0f);
-    body.material.diffuse = vec4(0.85f, 0.82f, 0.75f, 1); body.material.name = "Wall";
-    body.material.roughness = 0.75f; body.material.metallic = 0.0f;
-    body.scale = vec3(1.2f * size, size, 0.8f * size);
-    body.position = vec3(0, 0, 0);
-    deform_organic(body.mesh, size * 0.015f, sd);
-    parts.push_back(body);
-
-    Part roof_base; roof_base.name = "RoofBase";
-    Mesh roof_tri = create_pyramid_mesh(1.0f, 1.0f, 4);
-    for (auto& v : roof_tri.vertices) {
-        v.position.x *= 1.45f * size;
-        v.position.z *= 0.95f * size;
-        v.position.y *= 0.6f * size;
+    // Bottom disc
+    uint32_t bot_center = (uint32_t)m.vertices.size();
+    m.add_vertex(vec3(0, -hh, 0), vec3(0, -1, 0));
+    int wedges = std::max(3, (int)(angle / (2.0f * (float)M_PI) * seg));
+    for (int i = 0; i <= wedges; i++) {
+        float theta = -angle * 0.5f + angle * i / wedges;
+        float ct = cosf(theta), st = sinf(theta);
+        float n = vol_noise(ct * ns, -hh * ns, st * ns, seed);
+        float rr = rad * (1.0f + n * na);
+        m.add_vertex(vec3(ct * rr, -hh, st * rr), vec3(0, -1, 0), vec2((float)i / wedges, 0));
     }
-    roof_base.mesh = roof_tri;
-    roof_base.material.diffuse = vec4(0.55f, 0.13f, 0.08f, 1); roof_base.material.name = "Roof";
-    roof_base.material.roughness = 0.85f; roof_base.material.metallic = 0.0f;
-    roof_base.position = vec3(0, size * 0.8f, 0);
-    deform_organic(roof_base.mesh, size * 0.012f, sd + 1.0f);
-    parts.push_back(roof_base);
-
-    Part overhang; overhang.name = "RoofOverhang";
-    overhang.mesh = create_cube(1.0f);
-    overhang.material.diffuse = vec4(0.5f, 0.12f, 0.07f, 1); overhang.material.name = "Roof";
-    overhang.material.roughness = 0.85f; overhang.material.metallic = 0.0f;
-    overhang.scale = vec3(1.4f * size, 0.04f * size, 1.0f * size);
-    overhang.position = vec3(0, size * 0.52f, 0);
-    parts.push_back(overhang);
-
-    Part door; door.name = "Door";
-    door.mesh = create_cube(0.1f);
-    door.material.diffuse = vec4(0.35f, 0.2f, 0.08f, 1); door.material.name = "Wood";
-    door.material.roughness = 0.8f; door.material.metallic = 0.0f;
-    door.scale = vec3(0.18f * size, 0.32f * size, 0.04f * size);
-    door.position = vec3(0.02f * size, -size * 0.31f, 0.41f * size);
-    parts.push_back(door);
-
-    Part door_frame; door_frame.name = "DoorFrame";
-    door_frame.mesh = create_cube(0.1f);
-    door_frame.material.diffuse = vec4(0.3f, 0.18f, 0.06f, 1); door_frame.material.name = "Wood";
-    door_frame.material.roughness = 0.8f; door_frame.material.metallic = 0.0f;
-    door_frame.scale = vec3(0.22f * size, 0.36f * size, 0.02f * size);
-    door_frame.position = vec3(0.02f * size, -size * 0.29f, 0.425f * size);
-    parts.push_back(door_frame);
-
-    Part door_knob; door_knob.name = "DoorKnob";
-    door_knob.mesh = create_organic_sphere(0.015f * size, 8, 6, sd + 20.0f, 0.1f);
-    door_knob.material.diffuse = vec4(0.7f, 0.6f, 0.2f, 1);
-    door_knob.material.specular = vec4(0.8f, 0.7f, 0.3f, 1); door_knob.material.shininess = 64.0f;
-    door_knob.material.roughness = 0.3f; door_knob.material.metallic = 0.9f;
-    door_knob.material.name = "Metal";
-    door_knob.position = vec3(0.08f * size, -size * 0.32f, 0.435f * size);
-    parts.push_back(door_knob);
-
-    for (int i = -1; i <= 1; i += 2) {
-        Part w; w.name = "Window_" + std::to_string(i);
-        w.mesh = create_cube(0.1f);
-        w.material.diffuse = vec4(0.4f, 0.6f, 0.9f, 0.5f); w.material.opacity = 0.5f;
-        w.material.roughness = 0.05f; w.material.metallic = 0.0f;
-        w.material.name = "Glass";
-        w.scale = vec3(0.14f * size, 0.14f * size, 0.04f * size);
-        w.position = vec3(i * 0.38f * size, 0.08f * size, 0.41f * size);
-        parts.push_back(w);
-
-        Part wf; wf.name = "WindowFrame_" + std::to_string(i);
-        wf.mesh = create_cube(0.1f);
-        wf.material.diffuse = vec4(0.3f, 0.18f, 0.06f, 1); wf.material.name = "Wood";
-        wf.material.roughness = 0.8f; wf.material.metallic = 0.0f;
-        wf.scale = vec3(0.17f * size, 0.17f * size, 0.02f * size);
-        wf.position = vec3(i * 0.38f * size, 0.08f * size, 0.425f * size);
-        parts.push_back(wf);
-
-        Part wbar; wbar.name = "WindowBar_" + std::to_string(i);
-        wbar.mesh = create_cube(0.1f);
-        wbar.material.diffuse = vec4(0.3f, 0.18f, 0.06f, 1); wbar.material.name = "Wood";
-        wbar.scale = vec3(0.13f * size, 0.008f * size, 0.025f * size);
-        wbar.position = vec3(i * 0.38f * size, 0.08f * size, 0.43f * size);
-        parts.push_back(wbar);
+    for (int i = 0; i < wedges; i++) {
+        m.add_face({bot_center, (uint32_t)(1 + i + 1), (uint32_t)(1 + i)});
     }
 
-    Part chimney; chimney.name = "Chimney";
-    chimney.mesh = create_organic_cylinder(0.06f, 0.35f * size, 8, sd + 5.0f, 0.1f);
-    chimney.material.diffuse = vec4(0.5f, 0.12f, 0.08f, 1); chimney.material.name = "Chimney";
-    chimney.material.roughness = 0.9f; chimney.material.metallic = 0.0f;
-    chimney.position = vec3(0.35f * size, 1.05f * size, 0);
-    parts.push_back(chimney);
+    // Top disc
+    uint32_t top_center = (uint32_t)m.vertices.size();
+    m.add_vertex(vec3(0, hh, 0), vec3(0, 1, 0));
+    for (int i = 0; i <= wedges; i++) {
+        float theta = -angle * 0.5f + angle * i / wedges;
+        float ct = cosf(theta), st = sinf(theta);
+        float n = vol_noise(ct * ns, hh * ns, st * ns, seed + 10.0f);
+        float rr = rad * (1.0f + n * na);
+        m.add_vertex(vec3(ct * rr, hh, st * rr), vec3(0, 1, 0), vec2((float)i / wedges, 1));
+    }
+    uint32_t top_base = 1 + wedges + 1;
+    for (int i = 0; i < wedges; i++) {
+        m.add_face({top_center, (uint32_t)(top_base + i), (uint32_t)(top_base + i + 1)});
+    }
 
-    Part chimney_top; chimney_top.name = "ChimneyTop";
-    chimney_top.mesh = create_organic_cylinder(0.075f, 0.03f * size, 8, sd + 6.0f, 0.05f);
-    chimney_top.material.diffuse = vec4(0.48f, 0.1f, 0.06f, 1); chimney_top.material.name = "Chimney";
-    chimney_top.material.roughness = 0.85f; chimney_top.material.metallic = 0.0f;
-    chimney_top.position = vec3(0.35f * size, 1.23f * size, 0);
-    parts.push_back(chimney_top);
+    // Side faces
+    for (int i = 0; i < wedges; i++) {
+        uint32_t bl = 1 + i;
+        uint32_t br = 1 + i + 1;
+        uint32_t tl = top_base + i;
+        uint32_t tr = top_base + i + 1;
+        m.add_face({bl, br, tr, tl});
+    }
 
-    return parts;
+    m.compute_normals();
+    return m;
 }
 
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_car(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part chassis; chassis.name = "Chassis";
-    chassis.mesh = create_cube(1.0f);
-    chassis.material.diffuse = vec4(0.8f, 0.1f, 0.1f, 1); chassis.material.metallic = 0.7f; chassis.material.name = "Metal";
-    chassis.scale = vec3(size, 0.3f * size, 0.5f * size);
-    chassis.position = vec3(0, 0.15f * size, 0);
-    deform_organic(chassis.mesh, size * 0.01f, sd);
-    parts.push_back(chassis);
-    Part cabin; cabin.name = "Cabin";
-    cabin.mesh = create_cube(1.0f);
-    cabin.material.diffuse = vec4(0.7f, 0.08f, 0.08f, 1); cabin.material.metallic = 0.7f; cabin.material.name = "Metal";
-    cabin.scale = vec3(0.5f * size, 0.3f * size, 0.45f * size);
-    cabin.position = vec3(-0.1f * size, 0.45f * size, 0);
-    parts.push_back(cabin);
-    for (int i = 0; i < 4; i++) {
-        Part wh; wh.name = "Wheel_" + std::to_string(i);
-        wh.mesh = create_organic_cylinder(0.1f * size, 0.08f * size, 12, sd + i * 5.0f, 0.05f);
-        wh.material.diffuse = vec4(0.15f, 0.15f, 0.15f, 1); wh.material.name = "Rubber";
-        float x = (i < 2 ? -0.3f : 0.3f) * size;
-        float z = (i % 2 == 0 ? -0.25f : 0.25f) * size;
-        wh.position = vec3(x, 0, z);
-        wh.rotation = vec3(90, 0, 0);
-        parts.push_back(wh);
+// ---- DISC ----
+Mesh ParametricBuilder::build_disc(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamDisc" : vol.name;
+    int seg = vol.segments;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float rad = vol.params.disc.radius;
+    float thick = vol.params.disc.thickness;
+    float hh = thick * 0.5f;
+
+    // Top face
+    uint32_t tc = (uint32_t)m.vertices.size();
+    m.add_vertex(vec3(0, hh, 0), vec3(0, 1, 0));
+    for (int i = 0; i <= seg; i++) {
+        float theta = 2.0f * (float)M_PI * i / seg;
+        float ct = cosf(theta), st = sinf(theta);
+        float n = vol_noise(ct * ns, hh * ns, st * ns, seed);
+        float rr = rad * (1.0f + n * na);
+        m.add_vertex(vec3(ct * rr, hh, st * rr), vec3(0, 1, 0), vec2(0.5f + ct * 0.5f, 0.5f + st * 0.5f));
     }
-    Part headlight_l; headlight_l.name = "Headlight_L";
-    headlight_l.mesh = create_organic_sphere(0.04f * size, 8, 6, sd + 10.0f, 0.1f);
-    headlight_l.material.diffuse = vec4(1.0f, 0.95f, 0.8f, 1); headlight_l.material.emission = vec4(0.5f, 0.48f, 0.4f, 1); headlight_l.material.name = "Light";
-    headlight_l.position = vec3(0.5f * size, 0.15f * size, 0.18f * size);
-    parts.push_back(headlight_l);
-    Part headlight_r = headlight_l; headlight_r.name = "Headlight_R";
-    headlight_r.position = vec3(0.5f * size, 0.15f * size, -0.18f * size);
-    parts.push_back(headlight_r);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_robot(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-
-    Part torso; torso.name = "Torso";
-    torso.mesh = create_cube(0.8f * size);
-    for (auto& v : torso.mesh.vertices) {
-        float n = fbm3d(v.position.x*8.0f+sd, v.position.y*8.0f, v.position.z*8.0f, 4)*0.003f;
-        v.position += v.normal * n;
-    }
-    torso.material.diffuse = vec4(0.55f, 0.6f, 0.65f, 1); torso.material.metallic = 0.85f;
-    torso.material.roughness = 0.25f;
-    torso.material.name = "Metal";
-    torso.scale = vec3(0.6f, 0.7f, 0.4f);
-    torso.position = vec3(0, 0.1f * size, 0);
-    parts.push_back(torso);
-
-    Part chest_panel; chest_panel.name = "ChestPanel";
-    chest_panel.mesh = create_cube(0.1f);
-    chest_panel.material.diffuse = vec4(0.3f, 0.35f, 0.4f, 1);
-    chest_panel.material.metallic = 0.9f; chest_panel.material.roughness = 0.15f;
-    chest_panel.material.name = "Metal";
-    chest_panel.scale = vec3(0.25f * size, 0.25f * size, 0.02f * size);
-    chest_panel.position = vec3(0, 0.15f * size, 0.21f * size);
-    parts.push_back(chest_panel);
-
-    Part chest_light; chest_light.name = "ChestLight";
-    chest_light.mesh = create_organic_sphere(0.03f * size, 8, 6, sd + 30.0f, 0.1f);
-    chest_light.material.diffuse = vec4(0.0f, 0.9f, 1.0f, 1);
-    chest_light.material.emission = vec4(0.0f, 0.6f, 0.8f, 1);
-    chest_light.material.name = "Glow";
-    chest_light.position = vec3(0, 0.18f * size, 0.22f * size);
-    parts.push_back(chest_light);
-
-    Part head; head.name = "Head";
-    head.mesh = create_cube(1.0f);
-    for (auto& v : head.mesh.vertices) {
-        float n = fbm3d(v.position.x*10.0f+sd, v.position.y*10.0f, v.position.z*10.0f, 4)*0.002f;
-        v.position += v.normal * n;
-    }
-    head.material.diffuse = vec4(0.6f, 0.63f, 0.68f, 1); head.material.metallic = 0.85f;
-    head.material.roughness = 0.2f;
-    head.material.name = "Metal";
-    head.scale = vec3(0.35f * size, 0.3f * size, 0.3f * size);
-    head.position = vec3(0, 0.65f * size, 0);
-    parts.push_back(head);
-
-    for (int i = -1; i <= 1; i += 2) {
-        Part eye; eye.name = "Eye_" + std::to_string(i);
-        eye.mesh = create_organic_sphere(0.055f * size, 10, 8, sd + 2.0f, 0.08f);
-        eye.material.diffuse = vec4(0, 0.85f, 1.0f, 1);
-        eye.material.emission = vec4(0, 0.5f, 0.65f, 1);
-        eye.material.name = "Glow";
-        eye.position = vec3(i * 0.09f * size, 0.68f * size, 0.16f * size);
-        parts.push_back(eye);
+    for (int i = 0; i < seg; i++) {
+        m.add_face({tc, (uint32_t)(tc + 1 + i), (uint32_t)(tc + 2 + i)});
     }
 
-    Part antenna_base; antenna_base.name = "AntennaBase";
-    antenna_base.mesh = create_organic_cylinder(0.02f * size, 0.03f * size, 8, sd + 9.0f, 0.05f);
-    antenna_base.material.diffuse = vec4(0.5f, 0.53f, 0.58f, 1); antenna_base.material.metallic = 0.8f;
-    antenna_base.material.name = "Metal";
-    antenna_base.position = vec3(0, 0.82f * size, 0);
-    parts.push_back(antenna_base);
-
-    Part antenna; antenna.name = "Antenna";
-    antenna.mesh = create_organic_cylinder(0.012f * size, 0.2f * size, 6, sd + 7.0f, 0.06f);
-    antenna.material.diffuse = vec4(0.5f, 0.53f, 0.58f, 1); antenna.material.metallic = 0.85f;
-    antenna.material.roughness = 0.2f;
-    antenna.material.name = "Metal";
-    antenna.position = vec3(0, 0.95f * size, 0);
-    parts.push_back(antenna);
-
-    Part glow; glow.name = "AntennaGlow";
-    glow.mesh = create_organic_sphere(0.025f * size, 8, 6, sd + 8.0f, 0.1f);
-    glow.material.diffuse = vec4(0, 1, 0.5f, 1);
-    glow.material.emission = vec4(0, 0.8f, 0.4f, 1);
-    glow.material.name = "Glow";
-    glow.position = vec3(0, 1.08f * size, 0);
-    parts.push_back(glow);
-
-    for (int side = -1; side <= 1; side += 2) {
-        Part shoulder; shoulder.name = "Shoulder_" + std::to_string(side);
-        shoulder.mesh = create_organic_sphere(0.065f * size, 8, 6, sd + side*11.0f, 0.08f);
-        shoulder.material.diffuse = vec4(0.45f, 0.48f, 0.52f, 1);
-        shoulder.material.metallic = 0.9f; shoulder.material.roughness = 0.2f;
-        shoulder.material.name = "Metal";
-        shoulder.position = vec3(side * 0.38f * size, 0.35f * size, 0);
-        parts.push_back(shoulder);
-
-        Part upper_arm; upper_arm.name = "UpperArm_" + std::to_string(side);
-        upper_arm.mesh = create_organic_cylinder(0.055f * size, 0.22f * size, 8, sd + side * 3.0f, 0.08f);
-        upper_arm.material.diffuse = vec4(0.5f, 0.53f, 0.58f, 1);
-        upper_arm.material.metallic = 0.85f; upper_arm.material.roughness = 0.25f;
-        upper_arm.material.name = "Metal";
-        upper_arm.position = vec3(side * 0.42f * size, 0.15f * size, 0);
-        parts.push_back(upper_arm);
-
-        Part elbow; elbow.name = "Elbow_" + std::to_string(side);
-        elbow.mesh = create_organic_sphere(0.045f * size, 8, 6, sd + side*15.0f, 0.08f);
-        elbow.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1);
-        elbow.material.metallic = 0.9f; elbow.material.roughness = 0.15f;
-        elbow.material.name = "Metal";
-        elbow.position = vec3(side * 0.43f * size, 0.02f * size, 0);
-        parts.push_back(elbow);
-
-        Part forearm; forearm.name = "Forearm_" + std::to_string(side);
-        forearm.mesh = create_organic_cylinder(0.045f * size, 0.2f * size, 8, sd + side * 4.0f, 0.07f);
-        forearm.material.diffuse = vec4(0.52f, 0.55f, 0.6f, 1);
-        forearm.material.metallic = 0.85f; forearm.material.roughness = 0.25f;
-        forearm.material.name = "Metal";
-        forearm.position = vec3(side * 0.44f * size, -0.12f * size, 0);
-        parts.push_back(forearm);
-
-        Part hand; hand.name = "Hand_" + std::to_string(side);
-        hand.mesh = create_organic_sphere(0.04f * size, 8, 6, sd + side*17.0f, 0.1f);
-        hand.material.diffuse = vec4(0.45f, 0.48f, 0.52f, 1);
-        hand.material.metallic = 0.85f; hand.material.roughness = 0.25f;
-        hand.material.name = "Metal";
-        hand.position = vec3(side * 0.44f * size, -0.25f * size, 0);
-        parts.push_back(hand);
-
-        Part hip; hip.name = "Hip_" + std::to_string(side);
-        hip.mesh = create_organic_sphere(0.06f * size, 8, 6, sd + side*21.0f, 0.08f);
-        hip.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1);
-        hip.material.metallic = 0.9f; hip.material.roughness = 0.2f;
-        hip.material.name = "Metal";
-        hip.position = vec3(side * 0.15f * size, -0.28f * size, 0);
-        parts.push_back(hip);
-
-        Part upper_leg; upper_leg.name = "UpperLeg_" + std::to_string(side);
-        upper_leg.mesh = create_organic_cylinder(0.065f * size, 0.25f * size, 8, sd + side * 5.0f, 0.07f);
-        upper_leg.material.diffuse = vec4(0.48f, 0.5f, 0.55f, 1);
-        upper_leg.material.metallic = 0.85f; upper_leg.material.roughness = 0.25f;
-        upper_leg.material.name = "Metal";
-        upper_leg.position = vec3(side * 0.15f * size, -0.5f * size, 0);
-        parts.push_back(upper_leg);
-
-        Part knee; knee.name = "Knee_" + std::to_string(side);
-        knee.mesh = create_organic_sphere(0.05f * size, 8, 6, sd + side*25.0f, 0.08f);
-        knee.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1);
-        knee.material.metallic = 0.9f; knee.material.roughness = 0.15f;
-        knee.material.name = "Metal";
-        knee.position = vec3(side * 0.15f * size, -0.65f * size, 0.02f * size);
-        parts.push_back(knee);
-
-        Part lower_leg; lower_leg.name = "LowerLeg_" + std::to_string(side);
-        lower_leg.mesh = create_organic_cylinder(0.055f * size, 0.22f * size, 8, sd + side * 6.0f, 0.06f);
-        lower_leg.material.diffuse = vec4(0.5f, 0.53f, 0.58f, 1);
-        lower_leg.material.metallic = 0.85f; lower_leg.material.roughness = 0.25f;
-        lower_leg.material.name = "Metal";
-        lower_leg.position = vec3(side * 0.15f * size, -0.82f * size, 0);
-        parts.push_back(lower_leg);
-
-        Part foot; foot.name = "Foot_" + std::to_string(side);
-        foot.mesh = create_cube(0.1f);
-        for (auto& v : foot.mesh.vertices) {
-            v.position = vec3(v.position.x*1.0f, v.position.y*0.3f, v.position.z*1.3f);
-        }
-        foot.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1);
-        foot.material.metallic = 0.9f; foot.material.roughness = 0.2f;
-        foot.material.name = "Metal";
-        foot.position = vec3(side * 0.15f * size, -0.98f * size, 0.03f * size);
-        parts.push_back(foot);
+    // Bottom face
+    uint32_t bc = (uint32_t)m.vertices.size();
+    m.add_vertex(vec3(0, -hh, 0), vec3(0, -1, 0));
+    for (int i = 0; i <= seg; i++) {
+        float theta = 2.0f * (float)M_PI * i / seg;
+        float ct = cosf(theta), st = sinf(theta);
+        float n = vol_noise(ct * ns, -hh * ns, st * ns, seed + 5.0f);
+        float rr = rad * (1.0f + n * na);
+        m.add_vertex(vec3(ct * rr, -hh, st * rr), vec3(0, -1, 0), vec2(0.5f + ct * 0.5f, 0.5f + st * 0.5f));
+    }
+    uint32_t bot_ring = bc + 1;
+    for (int i = 0; i < seg; i++) {
+        m.add_face({bc, (uint32_t)(bot_ring + i + 1), (uint32_t)(bot_ring + i)});
     }
 
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_castle(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part base; base.name = "Base";
-    base.mesh = create_cube(1.0f);
-    base.material.diffuse = vec4(0.6f, 0.55f, 0.5f, 1); base.material.name = "Stone";
-    base.scale = vec3(2.0f * size, 0.8f * size, 1.5f * size);
-    deform_organic(base.mesh, size * 0.02f, sd);
-    parts.push_back(base);
-    vec2 tower_pos[] = {{-0.9f, -0.65f}, {0.9f, -0.65f}, {-0.9f, 0.65f}, {0.9f, 0.65f}};
-    for (int i = 0; i < 4; i++) {
-        Part t; t.name = "Tower_" + std::to_string(i);
-        t.mesh = create_organic_cylinder(0.2f * size, 1.2f * size, 12, sd + i * 5.0f, 0.08f);
-        t.material.diffuse = vec4(0.55f, 0.5f, 0.45f, 1); t.material.name = "Stone";
-        t.position = vec3(tower_pos[i].x * size, 0.4f * size, tower_pos[i].y * size);
-        parts.push_back(t);
-        Part cap; cap.name = "TowerCap_" + std::to_string(i);
-        cap.mesh = create_cone(0.22f * size, 0.4f * size);
-        cap.material.diffuse = vec4(0.35f, 0.12f, 0.1f, 1); cap.material.name = "Roof";
-        cap.position = vec3(tower_pos[i].x * size, 1.2f * size, tower_pos[i].y * size);
-        parts.push_back(cap);
+    // Side faces connecting top and bottom rings
+    uint32_t top_ring = tc + 1;
+    for (int i = 0; i < seg; i++) {
+        m.add_face({top_ring + i, top_ring + i + 1, bot_ring + i + 1, bot_ring + i});
     }
-    Part gate; gate.name = "Gate";
-    gate.mesh = create_cube(1.0f);
-    gate.material.diffuse = vec4(0.25f, 0.15f, 0.08f, 1); gate.material.name = "Wood";
-    gate.scale = vec3(0.3f * size, 0.5f * size, 0.1f * size);
-    gate.position = vec3(0, -0.15f * size, 0.76f * size);
-    parts.push_back(gate);
-    return parts;
+
+    m.compute_normals();
+    return m;
 }
 
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_spaceship(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_organic_cylinder(0.3f * size, 1.2f * size, 20, sd, 0.05f);
-    body.material.diffuse = vec4(0.7f, 0.72f, 0.75f, 1); body.material.metallic = 0.9f; body.material.name = "Metal";
-    body.rotation = vec3(0, 0, 90);
-    parts.push_back(body);
-    Part nose; nose.name = "Nose";
-    nose.mesh = create_cone(0.3f * size, 0.6f * size);
-    nose.material.diffuse = vec4(0.65f, 0.67f, 0.7f, 1); nose.material.metallic = 0.9f; nose.material.name = "Metal";
-    nose.position = vec3(0.9f * size, 0, 0);
-    nose.rotation = vec3(0, 0, 90);
-    parts.push_back(nose);
-    for (int i = 0; i < 3; i++) {
-        Part w; w.name = "Wing_" + std::to_string(i);
-        w.mesh = create_cube(0.1f);
-        w.material.diffuse = vec4(0.6f, 0.62f, 0.65f, 1); w.material.metallic = 0.8f; w.material.name = "Metal";
-        float a = (float)i * 2.0f * (float)M_PI / 3.0f;
-        w.scale = vec3(0.5f * size, 0.02f * size, 0.3f * size);
-        w.position = vec3(-0.2f * size, cosf(a) * 0.35f * size, sinf(a) * 0.35f * size);
-        w.rotation = vec3(rad2deg(a), 0, 0);
-        deform_organic(w.mesh, size * 0.005f, sd + i * 3.0f);
-        parts.push_back(w);
-    }
-    Part cockpit; cockpit.name = "Cockpit";
-    cockpit.mesh = create_organic_sphere(0.15f * size, 12, 8, sd + 10.0f, 0.05f);
-    cockpit.material.diffuse = vec4(0.3f, 0.5f, 0.8f, 0.6f); cockpit.material.opacity = 0.6f; cockpit.material.shininess = 150; cockpit.material.name = "Glass";
-    cockpit.position = vec3(0.65f * size, 0.15f * size, 0);
-    parts.push_back(cockpit);
-    for (int i = 0; i < 3; i++) {
-        Part e; e.name = "Engine_" + std::to_string(i);
-        e.mesh = create_organic_cylinder(0.08f * size, 0.2f * size, 10, sd + i * 7.0f, 0.06f);
-        e.material.diffuse = vec4(0.2f, 0.5f, 1.0f, 1); e.material.emission = vec4(0.1f, 0.25f, 0.5f, 1); e.material.name = "Glow";
-        float a = (float)i * 2.0f * (float)M_PI / 3.0f;
-        e.position = vec3(-0.65f * size, cosf(a) * 0.2f * size, sinf(a) * 0.2f * size);
-        e.rotation = vec3(0, 0, 90);
-        parts.push_back(e);
-    }
-    return parts;
-}
+// ---- LOFT (interpolates cross-sections along a path) ----
+Mesh ParametricBuilder::build_loft(const VolumeDescription& vol,
+                                   const std::vector<CrossSection>& path) {
+    Mesh m; m.name = vol.name.empty() ? "ParamLoft" : vol.name;
+    if (path.size() < 2) return m;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
 
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_sword(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part blade; blade.name = "Blade";
-    blade.mesh = create_cube(1.0f);
-    blade.material.diffuse = vec4(0.8f, 0.85f, 0.9f, 1); blade.material.metallic = 0.95f; blade.material.roughness = 0.1f; blade.material.name = "Steel";
-    blade.scale = vec3(0.08f * size, 0.8f * size, 0.02f * size);
-    blade.position = vec3(0, 0.5f * size, 0);
-    bend_mesh(blade.mesh, 0.05f, vec3(0, 0, 1));
-    parts.push_back(blade);
-    Part guard; guard.name = "Guard";
-    guard.mesh = create_cube(1.0f);
-    guard.material.diffuse = vec4(0.8f, 0.7f, 0.0f, 1); guard.material.metallic = 0.9f; guard.material.name = "Gold";
-    guard.scale = vec3(0.3f * size, 0.04f * size, 0.06f * size);
-    guard.position = vec3(0, 0.08f * size, 0);
-    parts.push_back(guard);
-    Part handle; handle.name = "Handle";
-    handle.mesh = create_organic_cylinder(0.025f * size, 0.2f * size, 8, sd, 0.08f);
-    handle.material.diffuse = vec4(0.35f, 0.2f, 0.1f, 1); handle.material.name = "Wood";
-    handle.position = vec3(0, -0.05f * size, 0);
-    parts.push_back(handle);
-    Part pommel; pommel.name = "Pommel";
-    pommel.mesh = create_organic_sphere(0.04f * size, 8, 6, sd + 1.0f, 0.1f);
-    pommel.material.diffuse = vec4(0.8f, 0.7f, 0.0f, 1); pommel.material.metallic = 0.9f; pommel.material.name = "Gold";
-    pommel.position = vec3(0, -0.18f * size, 0);
-    parts.push_back(pommel);
-    return parts;
-}
+    int profile_pts = (int)path[0].profile.size();
+    if (profile_pts < 3) return m;
 
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_chair(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part seat; seat.name = "Seat";
-    seat.mesh = create_cube(1.0f);
-    seat.material.diffuse = vec4(0.55f, 0.35f, 0.15f, 1); seat.material.name = "Wood";
-    seat.scale = vec3(0.45f * size, 0.04f * size, 0.45f * size);
-    seat.position = vec3(0, 0.2f * size, 0);
-    deform_organic(seat.mesh, size * 0.003f, sd);
-    parts.push_back(seat);
-    Part back; back.name = "Back";
-    back.mesh = create_cube(1.0f);
-    back.material.diffuse = vec4(0.5f, 0.32f, 0.12f, 1); back.material.name = "Wood";
-    back.scale = vec3(0.45f * size, 0.4f * size, 0.04f * size);
-    back.position = vec3(0, 0.42f * size, -0.2f * size);
-    parts.push_back(back);
-    for (int i = 0; i < 4; i++) {
-        Part l; l.name = "Leg_" + std::to_string(i);
-        l.mesh = create_organic_cylinder(0.02f * size, 0.2f * size, 6, sd + i * 3.0f, 0.06f);
-        l.material.diffuse = vec4(0.48f, 0.3f, 0.1f, 1); l.material.name = "Wood";
-        float lx = (i % 2 == 0 ? -0.18f : 0.18f) * size;
-        float lz = (i < 2 ? -0.18f : 0.18f) * size;
-        l.position = vec3(lx, 0.1f * size, lz);
-        parts.push_back(l);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_table(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part top; top.name = "TableTop";
-    top.mesh = create_cube(1.0f);
-    top.material.diffuse = vec4(0.55f, 0.35f, 0.15f, 1); top.material.name = "Wood";
-    top.scale = vec3(0.8f * size, 0.05f * size, 0.5f * size);
-    top.position = vec3(0, 0.4f * size, 0);
-    deform_organic(top.mesh, size * 0.003f, sd);
-    parts.push_back(top);
-    for (int i = 0; i < 4; i++) {
-        Part l; l.name = "Leg_" + std::to_string(i);
-        l.mesh = create_organic_cylinder(0.025f * size, 0.4f * size, 6, sd + i * 3.0f, 0.05f);
-        l.material.diffuse = vec4(0.48f, 0.3f, 0.1f, 1); l.material.name = "Wood";
-        float lx = (i % 2 == 0 ? -0.35f : 0.35f) * size;
-        float lz = (i < 2 ? -0.2f : 0.2f) * size;
-        l.position = vec3(lx, 0.2f * size, lz);
-        parts.push_back(l);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_star(float size) {
-    float sd = randf() * 100.0f;
-    Part p; p.name = "Star"; p.mesh = create_star_mesh(size);
-    deform_organic(p.mesh, size * 0.02f, sd);
-    p.material.diffuse = vec4(1, 0.9f, 0, 1); p.material.name = "Gold"; p.material.shininess = 64;
-    return {p};
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_heart(float size) {
-    float sd = randf() * 100.0f;
-    Part p; p.name = "Heart"; p.mesh = create_heart_mesh(size);
-    deform_organic(p.mesh, size * 0.01f, sd);
-    p.material.diffuse = vec4(0.9f, 0.1f, 0.2f, 1); p.material.name = "Red";
-    return {p};
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_mountain(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part m; m.name = "Mountain";
-    m.mesh = create_cone(1.0f * size, 1.5f * size, 24);
-    deform_organic(m.mesh, size * 0.05f, sd);
-    m.material.diffuse = vec4(0.4f, 0.38f, 0.35f, 1); m.material.name = "Rock";
-    parts.push_back(m);
-    Part snow; snow.name = "Snow";
-    snow.mesh = create_cone(0.3f * size, 0.5f * size, 16);
-    deform_organic(snow.mesh, size * 0.02f, sd + 2.0f);
-    snow.material.diffuse = vec4(0.95f, 0.95f, 1.0f, 1); snow.material.name = "Snow";
-    snow.position = vec3(0, 0.5f * size, 0);
-    parts.push_back(snow);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_snowman(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    float radii[] = {0.3f, 0.22f, 0.15f};
-    float heights[] = {0.3f, 0.72f, 1.08f};
-    for (int i = 0; i < 3; i++) {
-        Part b; b.name = "Ball_" + std::to_string(i);
-        b.mesh = create_organic_sphere(radii[i] * size, 16, 10, sd + i * 5.0f, 0.03f);
-        b.material.diffuse = vec4(0.95f, 0.95f, 0.95f, 1); b.material.name = "Snow";
-        b.position = vec3(0, heights[i] * size, 0);
-        parts.push_back(b);
-    }
-    Part nose; nose.name = "Nose";
-    nose.mesh = create_cone(0.03f * size, 0.15f * size, 8);
-    nose.material.diffuse = vec4(1.0f, 0.5f, 0.0f, 1); nose.material.name = "Carrot";
-    nose.position = vec3(0, 1.1f * size, 0.15f * size);
-    nose.rotation = vec3(0, 0, -90);
-    parts.push_back(nose);
-    for (int i = 0; i < 3; i++) {
-        Part eye; eye.name = "Eye_" + std::to_string(i);
-        eye.mesh = create_organic_sphere(0.015f * size, 6, 4, sd + 10.0f + i, 0.1f);
-        eye.material.diffuse = vec4(0.05f, 0.05f, 0.05f, 1); eye.material.name = "Black";
-        float angle = (float)(i - 1) * 20.0f;
-        float rad = deg2rad(angle);
-        eye.position = vec3(sin(rad) * 0.1f * size, 1.13f * size, cos(rad) * 0.13f * size);
-        parts.push_back(eye);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_diamond(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part gem; gem.name = "Gem";
-    gem.mesh = create_ico_sphere(0.3f * size, 2);
-    deform_organic(gem.mesh, size * 0.01f, sd);
-    gem.material.diffuse = vec4(0.2f, 0.6f, 1.0f, 0.9f); gem.material.opacity = 0.9f; gem.material.shininess = 150; gem.material.name = "Diamond";
-    gem.scale = vec3(1, 0.7f, 1);
-    parts.push_back(gem);
-    Part base; base.name = "Base";
-    base.mesh = create_ico_sphere(0.2f * size, 1);
-    base.material.diffuse = vec4(0.15f, 0.45f, 0.8f, 0.8f); base.material.opacity = 0.8f; base.material.shininess = 150; base.material.name = "Diamond";
-    base.position = vec3(0, -0.2f * size, 0);
-    parts.push_back(base);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_spiral(float size) {
-    std::vector<Part> parts;
-    for (int i = 0; i < 60; i++) {
-        float t = (float)i / 60.0f;
-        float angle = t * 6.0f * (float)M_PI;
-        float r = 0.3f * size;
-        float s = (0.05f + t * 0.12f) * size;
-        Part p; p.name = "Ball_" + std::to_string(i);
-        p.mesh = create_organic_sphere(s, 8, 6, (float)i * 0.5f, 0.08f);
-        float cr = fabsf(sinf(t * 2.0f * (float)M_PI));
-        float cg = fabsf(sinf(t * 2.0f * (float)M_PI + 2.0f));
-        float cb = fabsf(sinf(t * 2.0f * (float)M_PI + 4.0f));
-        p.material.diffuse = vec4(cr, cg, cb, 1); p.material.emission = vec4(cr * 0.3f, cg * 0.3f, cb * 0.3f, 1); p.material.name = "Rainbow";
-        p.position = vec3(cosf(angle) * r, t * 2.0f * size, sinf(angle) * r);
-        parts.push_back(p);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_dna(float size) {
-    std::vector<Part> parts;
-    for (int i = 0; i < 60; i++) {
-        float t = (float)i / 60.0f;
-        float angle = t * 6.0f * (float)M_PI;
-        float r = 0.3f * size;
-        float y = t * 3.0f * size;
-        for (int strand = 0; strand < 2; strand++) {
-            float a = angle + strand * (float)M_PI;
-            Part p; p.name = "DNA_Ball";
-            p.mesh = create_organic_sphere(0.04f * size, 8, 6, (float)i + strand * 30.0f, 0.1f);
-            p.material.diffuse = strand == 0 ? vec4(0.2f, 0.4f, 0.9f, 1) : vec4(0.9f, 0.2f, 0.2f, 1);
-            p.material.name = strand == 0 ? "Blue" : "Red";
-            p.position = vec3(cosf(a) * r, y, sinf(a) * r);
-            parts.push_back(p);
-        }
-        if (i % 5 == 0) {
-            Part link; link.name = "DNA_Link";
-            link.mesh = create_cylinder(0.01f * size, 0.5f * size, 6);
-            link.material.diffuse = vec4(0.7f, 0.7f, 0.7f, 1); link.material.name = "Gray";
-            link.position = vec3(cosf(angle) * r * 0.5f, y, sinf(angle) * r * 0.5f);
-            link.rotation = vec3(0, rad2deg(angle), 90);
-            parts.push_back(link);
+    // Generate vertices for each cross-section
+    for (size_t cs = 0; cs < path.size(); cs++) {
+        for (int p = 0; p < profile_pts; p++) {
+            vec3 local = path[cs].profile[p];
+            vec3 world = path[cs].center + local;
+            float n = vol_noise(world.x * ns, world.y * ns, world.z * ns, seed + (float)cs);
+            world += vec3(n * na);
+            m.add_vertex(world, vec3(0, 1, 0), vec2((float)p / profile_pts, (float)cs / (path.size() - 1)));
         }
     }
-    return parts;
-}
 
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_skull(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part cranium; cranium.name = "Cranium";
-    cranium.mesh = create_skull_mesh(size);
-    cranium.material.diffuse = vec4(0.9f, 0.88f, 0.82f, 1); cranium.material.name = "Bone";
-    cranium.position = vec3(0, 0.2f * size, 0);
-    deform_organic(cranium.mesh, size * 0.01f, sd);
-    parts.push_back(cranium);
-    for (int i = -1; i <= 1; i += 2) {
-        Part eye; eye.name = "EyeSocket";
-        eye.mesh = create_organic_sphere(0.06f * size, 8, 6, sd + 2.0f, 0.1f);
-        eye.material.diffuse = vec4(0.05f, 0.05f, 0.05f, 1); eye.material.name = "Dark";
-        eye.position = vec3(i * 0.1f * size, 0.25f * size, 0.35f * size);
-        parts.push_back(eye);
-    }
-    Part nose; nose.name = "NoseHole";
-    nose.mesh = create_cone(0.03f * size, 0.06f * size, 6);
-    nose.material.diffuse = vec4(0.05f, 0.05f, 0.05f, 1); nose.material.name = "Dark";
-    nose.position = vec3(0, 0.18f * size, 0.38f * size);
-    nose.rotation = vec3(0, 0, 180);
-    parts.push_back(nose);
-    Part jaw; jaw.name = "Jaw";
-    jaw.mesh = create_cube(0.35f * size);
-    jaw.material.diffuse = vec4(0.85f, 0.83f, 0.77f, 1); jaw.material.name = "Bone";
-    jaw.scale = vec3(1.0f, 0.3f, 0.6f);
-    jaw.position = vec3(0, -0.02f * size, 0.05f * size);
-    parts.push_back(jaw);
-    for (int i = 0; i < 6; i++) {
-        Part tooth; tooth.name = "Tooth_" + std::to_string(i);
-        tooth.mesh = create_cube(0.015f * size);
-        tooth.material.diffuse = vec4(0.95f, 0.95f, 0.9f, 1); tooth.material.name = "Teeth";
-        float x = ((float)i - 2.5f) * 0.04f * size;
-        tooth.position = vec3(x, 0.08f * size, 0.2f * size);
-        parts.push_back(tooth);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_airplane(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Fuselage";
-    body.mesh = create_organic_cylinder(0.15f * size, 1.5f * size, 16, sd, 0.04f);
-    body.material.diffuse = vec4(0.85f, 0.85f, 0.9f, 1); body.material.metallic = 0.6f; body.material.name = "Metal";
-    body.rotation = vec3(0, 0, 90);
-    parts.push_back(body);
-    Part nose; nose.name = "Nose";
-    nose.mesh = create_cone(0.15f * size, 0.3f * size, 12);
-    nose.material.diffuse = vec4(0.8f, 0.1f, 0.1f, 1); nose.material.name = "Red";
-    nose.position = vec3(0.9f * size, 0, 0);
-    nose.rotation = vec3(0, 0, 90);
-    parts.push_back(nose);
-    Part wing; wing.name = "Wings";
-    wing.mesh = create_cube(0.1f);
-    wing.material.diffuse = vec4(0.8f, 0.8f, 0.85f, 1); wing.material.metallic = 0.5f; wing.material.name = "Metal";
-    wing.scale = vec3(0.1f * size, 0.02f * size, 0.8f * size);
-    parts.push_back(wing);
-    Part tail_fin; tail_fin.name = "TailFin";
-    tail_fin.mesh = create_cube(0.1f);
-    tail_fin.material.diffuse = vec4(0.8f, 0.1f, 0.1f, 1); tail_fin.material.name = "Red";
-    tail_fin.scale = vec3(0.15f * size, 0.2f * size, 0.02f * size);
-    tail_fin.position = vec3(-0.65f * size, 0.1f * size, 0);
-    parts.push_back(tail_fin);
-    Part prop; prop.name = "Propeller";
-    prop.mesh = create_cube(0.1f);
-    prop.material.diffuse = vec4(0.3f, 0.2f, 0.1f, 1); prop.material.name = "Wood";
-    prop.scale = vec3(0.02f * size, 0.25f * size, 0.03f * size);
-    prop.position = vec3(0.78f * size, 0, 0);
-    parts.push_back(prop);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_boat(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part hull; hull.name = "Hull";
-    hull.mesh = create_cube(1.0f);
-    hull.material.diffuse = vec4(0.55f, 0.35f, 0.15f, 1); hull.material.name = "Wood";
-    hull.scale = vec3(1.2f * size, 0.3f * size, 0.4f * size);
-    hull.position = vec3(0, -0.1f * size, 0);
-    deform_organic(hull.mesh, size * 0.01f, sd);
-    parts.push_back(hull);
-    Part deck; deck.name = "Deck";
-    deck.mesh = create_cube(1.0f);
-    deck.material.diffuse = vec4(0.6f, 0.4f, 0.2f, 1); deck.material.name = "Wood";
-    deck.scale = vec3(1.0f * size, 0.04f * size, 0.35f * size);
-    deck.position = vec3(0, 0.08f * size, 0);
-    parts.push_back(deck);
-    Part mast; mast.name = "Mast";
-    mast.mesh = create_organic_cylinder(0.02f * size, 0.8f * size, 8, sd + 3.0f, 0.08f);
-    mast.material.diffuse = vec4(0.5f, 0.3f, 0.1f, 1); mast.material.name = "Wood";
-    mast.position = vec3(0, 0.5f * size, 0);
-    parts.push_back(mast);
-    Part sail; sail.name = "Sail";
-    sail.mesh = create_cube(0.1f);
-    sail.material.diffuse = vec4(0.95f, 0.95f, 0.9f, 1); sail.material.name = "Canvas";
-    sail.scale = vec3(0.02f * size, 0.5f * size, 0.3f * size);
-    sail.position = vec3(0.05f * size, 0.5f * size, 0);
-    parts.push_back(sail);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_door(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part panel; panel.name = "Panel";
-    panel.mesh = create_cube(1.0f);
-    panel.material.diffuse = vec4(0.45f, 0.28f, 0.12f, 1); panel.material.name = "Wood";
-    panel.scale = vec3(0.9f * size, 1.8f * size, 0.08f * size);
-    panel.position = vec3(0, 0.9f * size, 0);
-    deform_organic(panel.mesh, 0.003f * size, sd);
-    add_random_detail(panel.mesh, 0.01f * size, 8);
-    parts.push_back(panel);
-    for (int i = 0; i < 2; i++) {
-        Part frame; frame.name = "Frame_" + std::to_string(i);
-        frame.mesh = create_cube(1.0f);
-        frame.material.diffuse = vec4(0.4f, 0.25f, 0.1f, 1); frame.material.name = "Wood";
-        float x = (i == 0 ? -0.48f : 0.48f) * size;
-        frame.scale = vec3(0.06f * size, 1.85f * size, 0.1f * size);
-        frame.position = vec3(x, 0.9f * size, 0);
-        parts.push_back(frame);
-    }
-    Part top; top.name = "Top_Frame";
-    top.mesh = create_cube(1.0f);
-    top.material.diffuse = vec4(0.4f, 0.25f, 0.1f, 1); top.material.name = "Wood";
-    top.scale = vec3(1.0f * size, 0.06f * size, 0.1f * size);
-    top.position = vec3(0, 1.83f * size, 0);
-    parts.push_back(top);
-    Part handle; handle.name = "Handle";
-    handle.mesh = create_organic_cylinder(0.015f * size, 0.12f * size, 6, sd + 5.0f, 0.1f);
-    handle.material.diffuse = vec4(0.7f, 0.6f, 0.2f, 1); handle.material.name = "Metal";
-    handle.position = vec3(0.35f * size, 0.85f * size, 0.05f * size);
-    handle.rotation = vec3(0, 0, 90);
-    parts.push_back(handle);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_window(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part frame; frame.name = "Frame";
-    frame.mesh = create_cube(1.0f);
-    frame.material.diffuse = vec4(0.4f, 0.25f, 0.1f, 1); frame.material.name = "Wood";
-    frame.scale = vec3(1.2f * size, 1.0f * size, 0.08f * size);
-    frame.position = vec3(0, 0, 0);
-    parts.push_back(frame);
-    Part glass; glass.name = "Glass";
-    glass.mesh = create_cube(1.0f);
-    glass.material.diffuse = vec4(0.6f, 0.8f, 1.0f, 0.3f); glass.material.name = "Glass";
-    glass.scale = vec3(0.9f * size, 0.7f * size, 0.02f * size);
-    glass.position = vec3(0, 0, 0.02f * size);
-    parts.push_back(glass);
-    for (int i = 0; i < 2; i++) {
-        Part bar; bar.name = "Crossbar_" + std::to_string(i);
-        bar.mesh = create_cube(1.0f);
-        bar.material.diffuse = vec4(0.4f, 0.25f, 0.1f, 1); bar.material.name = "Wood";
-        if (i == 0) {
-            bar.scale = vec3(0.9f * size, 0.04f * size, 0.1f * size);
-        } else {
-            bar.scale = vec3(0.04f * size, 0.7f * size, 0.1f * size);
-        }
-        bar.position = vec3(0, 0, 0.03f * size);
-        parts.push_back(bar);
-    }
-    Part sill; sill.name = "Sill";
-    sill.mesh = create_cube(1.0f);
-    sill.material.diffuse = vec4(0.4f, 0.3f, 0.15f, 1); sill.material.name = "Wood";
-    sill.scale = vec3(1.3f * size, 0.05f * size, 0.15f * size);
-    sill.position = vec3(0, -0.52f * size, 0.06f * size);
-    deform_organic(sill.mesh, 0.002f * size, sd + 2.0f);
-    parts.push_back(sill);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_shelf(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    for (int i = 0; i < 3; i++) {
-        Part plank; plank.name = "Plank_" + std::to_string(i);
-        plank.mesh = create_cube(1.0f);
-        plank.material.diffuse = vec4(0.5f, 0.32f, 0.14f, 1); plank.material.name = "Wood";
-        plank.scale = vec3(1.0f * size, 0.04f * size, 0.25f * size);
-        plank.position = vec3(0, i * 0.4f * size, 0);
-        deform_organic(plank.mesh, 0.002f * size, sd + i * 3.0f);
-        parts.push_back(plank);
-    }
-    for (int i = 0; i < 2; i++) {
-        Part side; side.name = "Side_" + std::to_string(i);
-        side.mesh = create_cube(1.0f);
-        side.material.diffuse = vec4(0.48f, 0.3f, 0.12f, 1); side.material.name = "Wood";
-        float x = (i == 0 ? -0.5f : 0.5f) * size;
-        side.scale = vec3(0.04f * size, 0.84f * size, 0.25f * size);
-        side.position = vec3(x, 0.4f * size, 0);
-        parts.push_back(side);
-    }
-    Part back; back.name = "Back";
-    back.mesh = create_cube(1.0f);
-    back.material.diffuse = vec4(0.42f, 0.28f, 0.12f, 1); back.material.name = "Wood";
-    back.scale = vec3(1.04f * size, 0.84f * size, 0.02f * size);
-    back.position = vec3(0, 0.4f * size, -0.12f * size);
-    parts.push_back(back);
-    for (int i = 0; i < 4; i++) {
-        Part book; book.name = "Book_" + std::to_string(i);
-        book.mesh = create_cube(1.0f);
-        float r = 0.2f + randf() * 0.4f;
-        float g = 0.1f + randf() * 0.3f;
-        float b = 0.1f + randf() * 0.5f;
-        book.material.diffuse = vec4(r, g, b, 1); book.material.name = "Cover";
-        book.scale = vec3(0.06f * size, (0.2f + randf() * 0.12f) * size, 0.15f * size);
-        int shelf_idx = i / 2;
-        book.position = vec3((-0.15f + (i % 2) * 0.3f + randf() * 0.05f) * size, (0.04f + shelf_idx * 0.4f) * size, 0);
-        parts.push_back(book);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_lamp(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part base; base.name = "Base";
-    base.mesh = create_organic_cylinder(0.15f * size, 0.04f * size, 12, sd, 0.05f);
-    base.material.diffuse = vec4(0.3f, 0.3f, 0.3f, 1); base.material.name = "Metal";
-    base.position = vec3(0, 0.02f * size, 0);
-    parts.push_back(base);
-    Part pole; pole.name = "Pole";
-    pole.mesh = create_organic_cylinder(0.02f * size, 0.6f * size, 8, sd + 2.0f, 0.08f);
-    pole.material.diffuse = vec4(0.35f, 0.3f, 0.25f, 1); pole.material.name = "Metal";
-    pole.position = vec3(0, 0.34f * size, 0);
-    parts.push_back(pole);
-    Part shade; shade.name = "Shade";
-    shade.mesh = create_organic_cylinder(0.2f * size, 0.2f * size, 12, sd + 5.0f, 0.1f);
-    shade.material.diffuse = vec4(0.9f, 0.85f, 0.7f, 1); shade.material.name = "Fabric";
-    shade.scale = vec3(1, 0.6f, 1);
-    shade.position = vec3(0, 0.68f * size, 0);
-    parts.push_back(shade);
-    Part bulb; bulb.name = "Bulb";
-    bulb.mesh = create_organic_sphere(0.04f * size, 8, 6, sd + 8.0f, 0.15f);
-    bulb.material.diffuse = vec4(1.0f, 0.95f, 0.7f, 1); bulb.material.name = "Light";
-    bulb.position = vec3(0, 0.65f * size, 0);
-    parts.push_back(bulb);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_brain(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part main; main.name = "Brain";
-    main.mesh = create_brain_mesh(size * 0.5f);
-    main.material.diffuse = vec4(0.85f, 0.55f, 0.55f, 1); main.material.name = "Flesh";
-    main.position = vec3(0, 0, 0);
-    deform_organic(main.mesh, 0.02f * size, sd);
-    parts.push_back(main);
-    Part stem; stem.name = "Stem";
-    stem.mesh = create_organic_cylinder(0.08f * size, 0.15f * size, 8, sd + 3.0f, 0.15f);
-    stem.material.diffuse = vec4(0.8f, 0.5f, 0.5f, 1); stem.material.name = "Flesh";
-    stem.position = vec3(0, -0.2f * size, -0.05f * size);
-    stem.rotation = vec3(30, 0, 0);
-    parts.push_back(stem);
-    for (int i = 0; i < 6; i++) {
-        Part fold; fold.name = "Fold_" + std::to_string(i);
-        float a = (float)i / 6.0f * (float)M_PI * 2 + randf() * 0.3f;
-        float r = 0.15f + randf() * 0.08f;
-        fold.mesh = create_organic_cylinder(0.02f * size, r * size, 6, sd + i * 5.0f, 0.2f);
-        fold.material.diffuse = vec4(0.9f, 0.6f + randf() * 0.1f, 0.6f, 1); fold.material.name = "Flesh";
-        fold.position = vec3(cosf(a) * 0.12f * size, sinf(a) * 0.08f * size, 0.15f * size);
-        fold.rotation = vec3(rad2deg(sinf(a) * 0.5f), 0, rad2deg(cosf(a) * 0.5f));
-        parts.push_back(fold);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_flower(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part stem; stem.name = "Stem";
-    stem.mesh = create_organic_cylinder(0.015f * size, 0.5f * size, 6, sd, 0.1f);
-    stem.material.diffuse = vec4(0.15f, 0.5f, 0.1f, 1); stem.material.name = "Plant";
-    stem.position = vec3(0, 0.25f * size, 0);
-    parts.push_back(stem);
-    for (int i = 0; i < 5; i++) {
-        Part petal; petal.name = "Petal_" + std::to_string(i);
-        float a = (float)i / 5.0f * (float)M_PI * 2 + randf() * 0.2f;
-        petal.mesh = create_cube(1.0f);
-        petal.material.diffuse = vec4(0.8f + randf() * 0.15f, 0.2f + randf() * 0.3f, 0.3f + randf() * 0.2f, 1);
-        petal.material.name = "Petal";
-        petal.scale = vec3(0.08f * size, 0.02f * size, 0.12f * size);
-        petal.position = vec3(cosf(a) * 0.06f * size, 0.52f * size, sinf(a) * 0.06f * size);
-        petal.rotation = vec3(rad2deg(0.5f), rad2deg(a), 0);
-        deform_organic(petal.mesh, 0.005f * size, sd + i * 7.0f);
-        parts.push_back(petal);
-    }
-    Part center; center.name = "Center";
-    center.mesh = create_organic_sphere(0.03f * size, 8, 6, sd + 10.0f, 0.2f);
-    center.material.diffuse = vec4(1.0f, 0.9f, 0.1f, 1); center.material.name = "Pistil";
-    center.position = vec3(0, 0.53f * size, 0);
-    parts.push_back(center);
-    Part leaf1; leaf1.name = "Leaf_1";
-    leaf1.mesh = create_leaf_cluster(0.08f * size, sd + 3.0f);
-    leaf1.material.diffuse = vec4(0.1f, 0.55f, 0.1f, 1); leaf1.material.name = "Leaf";
-    leaf1.position = vec3(0.05f * size, 0.2f * size, 0);
-    leaf1.rotation = vec3(0, 0, -30);
-    parts.push_back(leaf1);
-    Part leaf2; leaf2.name = "Leaf_2";
-    leaf2.mesh = create_leaf_cluster(0.07f * size, sd + 6.0f);
-    leaf2.material.diffuse = vec4(0.12f, 0.5f, 0.12f, 1); leaf2.material.name = "Leaf";
-    leaf2.position = vec3(-0.04f * size, 0.3f * size, 0.03f * size);
-    leaf2.rotation = vec3(10, 0, 25);
-    parts.push_back(leaf2);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_bone(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part shaft; shaft.name = "Shaft";
-    shaft.mesh = create_organic_cylinder(0.03f * size, 0.5f * size, 8, sd, 0.08f);
-    shaft.material.diffuse = vec4(0.9f, 0.88f, 0.8f, 1); shaft.material.name = "Bone";
-    shaft.position = vec3(0, 0, 0);
-    parts.push_back(shaft);
-    for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 2; j++) {
-            Part knob; knob.name = "Knob_" + std::to_string(i * 2 + j);
-            knob.mesh = create_organic_sphere(0.05f * size, 8, 6, sd + (i * 2 + j) * 5.0f, 0.2f);
-            knob.material.diffuse = vec4(0.92f, 0.9f, 0.82f, 1); knob.material.name = "Bone";
-            float x = (i == 0 ? -0.22f : 0.22f) * size;
-            float z = (j == 0 ? -0.04f : 0.04f) * size;
-            knob.position = vec3(x, 0, z);
-            parts.push_back(knob);
+    // Create quad faces between cross-sections
+    for (size_t cs = 0; cs + 1 < path.size(); cs++) {
+        for (int p = 0; p < profile_pts; p++) {
+            uint32_t a = (uint32_t)(cs * profile_pts + p);
+            uint32_t b = (uint32_t)((cs + 1) * profile_pts + p);
+            uint32_t c = (uint32_t)((cs + 1) * profile_pts + (p + 1) % profile_pts);
+            uint32_t d = (uint32_t)(cs * profile_pts + (p + 1) % profile_pts);
+            m.add_face({a, b, c, d});
         }
     }
-    return parts;
+
+    m.compute_normals();
+    return m;
 }
 
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_key(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part shaft; shaft.name = "Shaft";
-    shaft.mesh = create_organic_cylinder(0.012f * size, 0.35f * size, 6, sd, 0.06f);
-    shaft.material.diffuse = vec4(0.75f, 0.65f, 0.2f, 1); shaft.material.name = "Metal";
-    shaft.position = vec3(0, 0, 0);
-    parts.push_back(shaft);
-    Part bow; bow.name = "Bow";
-    bow.mesh = create_ring(0.06f * size, 0.035f * size, 12);
-    bow.material.diffuse = vec4(0.75f, 0.65f, 0.2f, 1); bow.material.name = "Metal";
-    bow.position = vec3(0, 0.22f * size, 0);
-    parts.push_back(bow);
-    for (int i = 0; i < 3; i++) {
-        Part tooth; tooth.name = "Tooth_" + std::to_string(i);
-        tooth.mesh = create_cube(1.0f);
-        tooth.material.diffuse = vec4(0.78f, 0.68f, 0.22f, 1); tooth.material.name = "Metal";
-        float h = 0.04f + i * 0.06f;
-        tooth.scale = vec3(0.03f * size, 0.04f * size, 0.02f * size);
-        tooth.position = vec3(0.02f * size, -h * size, 0);
-        parts.push_back(tooth);
-    }
-    deform_organic(parts[0].mesh, 0.001f * size, sd);
-    return parts;
-}
+// ---- TRANSFORM ----
+void ParametricBuilder::transform_mesh(Mesh& m, const VolumeDescription& vol) {
+    mat4 T = glm::translate(mat4(1.0f), vol.position);
+    mat4 Ry = glm::rotate(mat4(1.0f), vol.rotation.y, vec3(0, 1, 0));
+    mat4 Rx = glm::rotate(mat4(1.0f), vol.rotation.x, vec3(1, 0, 0));
+    mat4 Rz = glm::rotate(mat4(1.0f), vol.rotation.z, vec3(0, 0, 1));
+    mat4 S = glm::scale(mat4(1.0f), vol.scale);
+    mat4 M = T * Ry * Rx * Rz * S;
 
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_helmet(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part dome; dome.name = "Dome";
-    dome.mesh = create_organic_sphere(0.3f * size, 16, 12, sd, 0.08f);
-    dome.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1); dome.material.name = "Metal";
-    dome.scale = vec3(1, 0.8f, 1.05f);
-    dome.position = vec3(0, 0.1f * size, 0);
-    parts.push_back(dome);
-    Part visor; visor.name = "Visor";
-    visor.mesh = create_cube(1.0f);
-    visor.material.diffuse = vec4(0.2f, 0.5f, 0.8f, 0.6f); visor.material.name = "Glass";
-    visor.scale = vec3(0.35f * size, 0.12f * size, 0.1f * size);
-    visor.position = vec3(0, 0.05f * size, 0.28f * size);
-    parts.push_back(visor);
-    Part brim; brim.name = "Brim";
-    brim.mesh = create_organic_cylinder(0.32f * size, 0.04f * size, 16, sd + 3.0f, 0.06f);
-    brim.material.diffuse = vec4(0.38f, 0.4f, 0.42f, 1); brim.material.name = "Metal";
-    brim.position = vec3(0, -0.05f * size, 0);
-    parts.push_back(brim);
-    Part ridge; ridge.name = "Ridge";
-    ridge.mesh = create_organic_cylinder(0.02f * size, 0.35f * size, 6, sd + 5.0f, 0.1f);
-    ridge.material.diffuse = vec4(0.5f, 0.45f, 0.2f, 1); ridge.material.name = "Metal";
-    ridge.position = vec3(0, 0.2f * size, 0);
-    ridge.rotation = vec3(90, 0, 0);
-    parts.push_back(ridge);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_battery(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_organic_cylinder(0.12f * size, 0.4f * size, 12, sd, 0.04f);
-    body.material.diffuse = vec4(0.2f, 0.2f, 0.2f, 1); body.material.name = "Metal";
-    body.position = vec3(0, 0, 0);
-    parts.push_back(body);
-    Part terminal; terminal.name = "Terminal";
-    terminal.mesh = create_organic_cylinder(0.04f * size, 0.03f * size, 8, sd + 2.0f, 0.1f);
-    terminal.material.diffuse = vec4(0.7f, 0.7f, 0.7f, 1); terminal.material.name = "Metal";
-    terminal.position = vec3(0, 0.22f * size, 0);
-    parts.push_back(terminal);
-    Part label; label.name = "Label";
-    label.mesh = create_cube(1.0f);
-    label.material.diffuse = vec4(0.8f, 0.15f, 0.1f, 1); label.material.name = "Plastic";
-    label.scale = vec3(0.2f * size, 0.2f * size, 0.01f * size);
-    label.position = vec3(0, 0, 0.12f * size);
-    parts.push_back(label);
-    Part stripe; stripe.name = "Stripe";
-    stripe.mesh = create_cube(1.0f);
-    stripe.material.diffuse = vec4(0.1f, 0.6f, 0.1f, 1); stripe.material.name = "Plastic";
-    stripe.scale = vec3(0.25f * size, 0.03f * size, 0.01f * size);
-    stripe.position = vec3(0, -0.05f * size, 0.12f * size);
-    parts.push_back(stripe);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_ice_crystal(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part main; main.name = "Main_Shard";
-    main.mesh = create_crystal_mesh(size * 0.4f);
-    main.material.diffuse = vec4(0.7f, 0.85f, 1.0f, 0.7f); main.material.name = "Ice";
-    main.position = vec3(0, 0.15f * size, 0);
-    parts.push_back(main);
-    for (int i = 0; i < 4; i++) {
-        Part shard; shard.name = "Shard_" + std::to_string(i);
-        float a = (float)i / 4.0f * (float)M_PI * 2 + randf() * 0.4f;
-        shard.mesh = create_crystal_mesh(size * (0.12f + randf() * 0.1f));
-        shard.material.diffuse = vec4(0.65f + randf() * 0.1f, 0.8f + randf() * 0.1f, 1.0f, 0.6f);
-        shard.material.name = "Ice";
-        shard.position = vec3(cosf(a) * 0.15f * size, 0.05f * size, sinf(a) * 0.15f * size);
-        shard.rotation = vec3(randf() * 20 - 10, rad2deg(a), randf() * 20 - 10);
-        parts.push_back(shard);
-    }
-    Part base; base.name = "Base";
-    base.mesh = create_stone(0.15f * size, sd + 8.0f);
-    base.material.diffuse = vec4(0.6f, 0.6f, 0.65f, 1); base.material.name = "Stone";
-    base.position = vec3(0, -0.1f * size, 0);
-    parts.push_back(base);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_mushroom(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part stem; stem.name = "Stem";
-    stem.mesh = create_organic_cylinder(0.05f * size, 0.2f * size, 8, sd, 0.15f);
-    stem.material.diffuse = vec4(0.9f, 0.85f, 0.75f, 1); stem.material.name = "Flesh";
-    stem.position = vec3(0, 0.1f * size, 0);
-    parts.push_back(stem);
-    Part cap; cap.name = "Cap";
-    cap.mesh = create_organic_sphere(0.15f * size, 12, 8, sd + 3.0f, 0.12f);
-    cap.material.diffuse = vec4(0.8f, 0.15f, 0.1f, 1); cap.material.name = "Skin";
-    cap.scale = vec3(1, 0.5f, 1);
-    cap.position = vec3(0, 0.22f * size, 0);
-    parts.push_back(cap);
-    for (int i = 0; i < 5; i++) {
-        Part dot; dot.name = "Dot_" + std::to_string(i);
-        float a = (float)i / 5.0f * (float)M_PI * 2 + randf() * 0.5f;
-        dot.mesh = create_organic_sphere(0.015f * size, 6, 4, sd + i * 5.0f, 0.3f);
-        dot.material.diffuse = vec4(0.95f, 0.95f, 0.9f, 1); dot.material.name = "Spot";
-        dot.position = vec3(cosf(a) * 0.1f * size, 0.25f * size, sinf(a) * 0.1f * size);
-        parts.push_back(dot);
-    }
-    Part gill; gill.name = "Gills";
-    gill.mesh = create_organic_cylinder(0.12f * size, 0.01f * size, 12, sd + 8.0f, 0.08f);
-    gill.material.diffuse = vec4(0.85f, 0.8f, 0.7f, 1); gill.material.name = "Flesh";
-    gill.position = vec3(0, 0.18f * size, 0);
-    parts.push_back(gill);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_pyramid(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part main; main.name = "Pyramid";
-    main.mesh = create_pyramid_mesh(0.5f * size, 0.6f * size);
-    main.material.diffuse = vec4(0.85f, 0.75f, 0.5f, 1); main.material.name = "Stone";
-    main.position = vec3(0, 0.3f * size, 0);
-    deform_organic(main.mesh, 0.008f * size, sd);
-    add_random_detail(main.mesh, 0.01f * size, 12);
-    parts.push_back(main);
-    Part cap; cap.name = "Capstone";
-    cap.mesh = create_organic_sphere(0.03f * size, 8, 6, sd + 3.0f, 0.2f);
-    cap.material.diffuse = vec4(0.9f, 0.85f, 0.2f, 1); cap.material.name = "Gold";
-    cap.position = vec3(0, 0.62f * size, 0);
-    parts.push_back(cap);
-    Part base; base.name = "Base_Ring";
-    base.mesh = create_ring(0.38f * size, 0.35f * size, 20);
-    base.material.diffuse = vec4(0.75f, 0.65f, 0.4f, 1); base.material.name = "Stone";
-    base.position = vec3(0, 0.01f * size, 0);
-    parts.push_back(base);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_donut(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part dough; dough.name = "Dough";
-    dough.mesh = create_ring(0.2f * size, 0.08f * size, 24);
-    dough.material.diffuse = vec4(0.75f, 0.55f, 0.3f, 1); dough.material.name = "Dough";
-    dough.scale = vec3(1, 0.5f, 1);
-    deform_organic(dough.mesh, 0.006f * size, sd);
-    parts.push_back(dough);
-    Part glaze; glaze.name = "Glaze";
-    glaze.mesh = create_ring(0.21f * size, 0.085f * size, 24);
-    glaze.material.diffuse = vec4(0.9f, 0.4f, 0.6f, 1); glaze.material.name = "Glaze";
-    glaze.scale = vec3(1, 0.25f, 1);
-    glaze.position = vec3(0, 0.02f * size, 0);
-    parts.push_back(glaze);
-    for (int i = 0; i < 8; i++) {
-        Part sprinkle; sprinkle.name = "Sprinkle_" + std::to_string(i);
-        float a = (float)i / 8.0f * (float)M_PI * 2 + randf() * 0.3f;
-        float r = 0.14f + randf() * 0.03f;
-        sprinkle.mesh = create_cube(1.0f);
-        sprinkle.material.diffuse = vec4(randf(), randf(), randf(), 1); sprinkle.material.name = "Candy";
-        sprinkle.scale = vec3(0.01f * size, 0.005f * size, 0.025f * size);
-        sprinkle.position = vec3(cosf(a) * r * size, 0.035f * size, sinf(a) * r * size);
-        sprinkle.rotation = vec3(0, rad2deg(a), randf() * 30);
-        parts.push_back(sprinkle);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_satellite(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_organic_cylinder(0.12f * size, 0.15f * size, 10, sd, 0.05f);
-    body.material.diffuse = vec4(0.7f, 0.72f, 0.75f, 1); body.material.name = "Metal";
-    body.position = vec3(0, 0, 0);
-    parts.push_back(body);
-    Part dish; dish.name = "Dish";
-    dish.mesh = create_organic_sphere(0.1f * size, 10, 8, sd + 3.0f, 0.1f);
-    dish.material.diffuse = vec4(0.85f, 0.87f, 0.9f, 1); dish.material.name = "Metal";
-    dish.scale = vec3(1, 0.3f, 1);
-    dish.position = vec3(0, 0.12f * size, 0);
-    parts.push_back(dish);
-    for (int i = 0; i < 2; i++) {
-        Part panel; panel.name = "Solar_Panel_" + std::to_string(i);
-        panel.mesh = create_cube(1.0f);
-        panel.material.diffuse = vec4(0.1f, 0.15f, 0.4f, 1); panel.material.name = "Solar";
-        float x = (i == 0 ? -0.3f : 0.3f) * size;
-        panel.scale = vec3(0.25f * size, 0.01f * size, 0.15f * size);
-        panel.position = vec3(x, 0, 0);
-        parts.push_back(panel);
-    }
-    Part antenna; antenna.name = "Antenna";
-    antenna.mesh = create_organic_cylinder(0.005f * size, 0.15f * size, 4, sd + 6.0f, 0.05f);
-    antenna.material.diffuse = vec4(0.6f, 0.6f, 0.65f, 1); antenna.material.name = "Metal";
-    antenna.position = vec3(0.05f * size, 0.2f * size, 0);
-    antenna.rotation = vec3(0, 0, -15);
-    parts.push_back(antenna);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_jewelry(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part band; band.name = "Band";
-    band.mesh = create_ring(0.15f * size, 0.12f * size, 20);
-    band.material.diffuse = vec4(0.85f, 0.75f, 0.2f, 1); band.material.name = "Gold";
-    band.scale = vec3(1, 0.3f, 1);
-    deform_organic(band.mesh, 0.002f * size, sd);
-    parts.push_back(band);
-    Part gem; gem.name = "Gem";
-    gem.mesh = create_crystal_mesh(0.04f * size);
-    gem.material.diffuse = vec4(0.1f, 0.4f, 0.9f, 0.8f); gem.material.name = "Gemstone";
-    gem.position = vec3(0, 0.04f * size, 0);
-    parts.push_back(gem);
-    Part setting; setting.name = "Setting";
-    setting.mesh = create_ring(0.035f * size, 0.025f * size, 8);
-    setting.material.diffuse = vec4(0.85f, 0.75f, 0.2f, 1); setting.material.name = "Gold";
-    setting.position = vec3(0, 0.04f * size, 0);
-    parts.push_back(setting);
-    for (int i = 0; i < 6; i++) {
-        Part accent; accent.name = "Accent_" + std::to_string(i);
-        float a = (float)i / 6.0f * (float)M_PI * 2;
-        accent.mesh = create_organic_sphere(0.008f * size, 6, 4, sd + i * 4.0f, 0.2f);
-        accent.material.diffuse = vec4(0.9f, 0.2f, 0.3f, 1); accent.material.name = "Ruby";
-        accent.position = vec3(cosf(a) * 0.13f * size, 0.01f * size, sinf(a) * 0.13f * size);
-        parts.push_back(accent);
-    }
-    return parts;
-}
-
-// ============================================================
-// NEW SCENE GENERATORS
-// ============================================================
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_throne(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part seat; seat.name = "Seat";
-    seat.mesh = create_throne_mesh(size * 0.5f);
-    seat.material.diffuse = vec4(0.35f, 0.2f, 0.1f, 1); seat.material.name = "Wood";
-    seat.position = vec3(0, 0.25f * size, 0);
-    parts.push_back(seat);
-    Part cushion; cushion.name = "Cushion";
-    cushion.mesh = create_organic_sphere(0.18f * size, 10, 8, sd + 2.0f, 0.1f);
-    cushion.material.diffuse = vec4(0.7f, 0.1f, 0.1f, 1); cushion.material.name = "Velvet";
-    cushion.scale = vec3(1, 0.3f, 1);
-    cushion.position = vec3(0, 0.38f * size, 0.02f * size);
-    parts.push_back(cushion);
-    Part back; back.name = "Backrest";
-    back.mesh = create_cube(1.0f);
-    back.material.diffuse = vec4(0.38f, 0.22f, 0.12f, 1); back.material.name = "Wood";
-    back.scale = vec3(0.45f * size, 0.55f * size, 0.05f * size);
-    back.position = vec3(0, 0.55f * size, -0.18f * size);
-    deform_organic(back.mesh, 0.005f * size, sd + 3.0f);
-    parts.push_back(back);
-    for (int i = 0; i < 2; i++) {
-        Part arm; arm.name = "Arm_" + std::to_string(i);
-        arm.mesh = create_cube(1.0f);
-        arm.material.diffuse = vec4(0.36f, 0.21f, 0.11f, 1); arm.material.name = "Wood";
-        float x = (i == 0 ? -0.25f : 0.25f) * size;
-        arm.scale = vec3(0.06f * size, 0.1f * size, 0.35f * size);
-        arm.position = vec3(x, 0.42f * size, -0.02f * size);
-        parts.push_back(arm);
-    }
-    for (int i = 0; i < 4; i++) {
-        Part leg; leg.name = "Leg_" + std::to_string(i);
-        leg.mesh = create_organic_cylinder(0.03f * size, 0.25f * size, 6, sd + i * 5.0f, 0.12f);
-        leg.material.diffuse = vec4(0.34f, 0.2f, 0.1f, 1); leg.material.name = "Wood";
-        float x = (i % 2 == 0 ? -0.2f : 0.2f) * size;
-        float z = (i < 2 ? -0.15f : 0.15f) * size;
-        leg.position = vec3(x, 0.12f * size, z);
-        parts.push_back(leg);
-    }
-    Part crown; crown.name = "Crown";
-    crown.mesh = create_star_mesh(0.06f * size);
-    crown.material.diffuse = vec4(0.85f, 0.75f, 0.2f, 1); crown.material.name = "Gold";
-    crown.position = vec3(0, 0.85f * size, -0.18f * size);
-    parts.push_back(crown);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_altar(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part slab; slab.name = "Slab";
-    slab.mesh = create_altar_mesh(size * 0.5f);
-    slab.material.diffuse = vec4(0.6f, 0.6f, 0.65f, 1); slab.material.name = "Stone";
-    slab.position = vec3(0, 0.15f * size, 0);
-    parts.push_back(slab);
-    Part pillar1; pillar1.name = "Pillar_1";
-    pillar1.mesh = create_tapered_cylinder(0.06f * size, 0.08f * size, 0.3f * size, 10);
-    pillar1.material.diffuse = vec4(0.55f, 0.55f, 0.6f, 1); pillar1.material.name = "Stone";
-    pillar1.position = vec3(-0.18f * size, 0.15f * size, 0);
-    parts.push_back(pillar1);
-    Part pillar2; pillar2.name = "Pillar_2";
-    pillar2.mesh = create_tapered_cylinder(0.06f * size, 0.08f * size, 0.3f * size, 10);
-    pillar2.material.diffuse = vec4(0.57f, 0.57f, 0.62f, 1); pillar2.material.name = "Stone";
-    pillar2.position = vec3(0.18f * size, 0.15f * size, 0);
-    parts.push_back(pillar2);
-    Part bowl; bowl.name = "Bowl";
-    bowl.mesh = create_organic_cylinder(0.08f * size, 0.04f * size, 10, sd + 3.0f, 0.08f);
-    bowl.material.diffuse = vec4(0.7f, 0.6f, 0.2f, 1); bowl.material.name = "Gold";
-    bowl.position = vec3(0, 0.33f * size, 0);
-    parts.push_back(bowl);
-    Part flame; flame.name = "Flame";
-    flame.mesh = create_organic_sphere(0.03f * size, 8, 6, sd + 5.0f, 0.3f);
-    flame.material.diffuse = vec4(1.0f, 0.6f, 0.1f, 1); flame.material.name = "Fire";
-    flame.scale = vec3(0.8f, 1.5f, 0.8f);
-    flame.position = vec3(0, 0.37f * size, 0);
-    parts.push_back(flame);
-    for (int i = 0; i < 3; i++) {
-        Part rune; rune.name = "Rune_" + std::to_string(i);
-        float a = (float)i / 3.0f * (float)M_PI * 2;
-        rune.mesh = create_cube(1.0f);
-        rune.material.diffuse = vec4(0.4f, 0.7f, 0.9f, 1); rune.material.name = "Glow";
-        rune.scale = vec3(0.02f * size, 0.03f * size, 0.01f * size);
-        rune.position = vec3(cosf(a) * 0.19f * size, 0.2f * size, sinf(a) * 0.19f * size);
-        parts.push_back(rune);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_campfire(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    for (int i = 0; i < 6; i++) {
-        Part stone; stone.name = "Stone_" + std::to_string(i);
-        float a = (float)i / 6.0f * (float)M_PI * 2 + randf() * 0.3f;
-        stone.mesh = create_stone((0.04f + randf() * 0.03f) * size, sd + i * 5.0f);
-        stone.material.diffuse = vec4(0.45f + randf() * 0.1f, 0.43f + randf() * 0.1f, 0.4f, 1);
-        stone.material.name = "Stone";
-        stone.position = vec3(cosf(a) * 0.15f * size, 0.02f * size, sinf(a) * 0.15f * size);
-        stone.rotation = vec3(randf() * 20, randf() * 360, randf() * 15);
-        parts.push_back(stone);
-    }
-    for (int i = 0; i < 4; i++) {
-        Part log; log.name = "Log_" + std::to_string(i);
-        float a = (float)i / 4.0f * (float)M_PI * 2 + 0.3f;
-        log.mesh = create_log(0.02f * size, 0.2f * size, sd + i * 7.0f);
-        log.material.diffuse = vec4(0.4f, 0.25f, 0.1f, 1); log.material.name = "Wood";
-        log.position = vec3(cosf(a) * 0.05f * size, 0.04f * size, sinf(a) * 0.05f * size);
-        log.rotation = vec3(60 + randf() * 15, rad2deg(a), 0);
-        parts.push_back(log);
-    }
-    Part fire; fire.name = "Fire";
-    fire.mesh = create_organic_sphere(0.06f * size, 8, 6, sd + 15.0f, 0.4f);
-    fire.material.diffuse = vec4(1.0f, 0.5f, 0.05f, 1); fire.material.name = "Fire";
-    fire.scale = vec3(0.7f, 1.2f, 0.7f);
-    fire.position = vec3(0, 0.1f * size, 0);
-    parts.push_back(fire);
-    Part fire2; fire2.name = "Fire_Core";
-    fire2.mesh = create_organic_sphere(0.03f * size, 6, 4, sd + 18.0f, 0.5f);
-    fire2.material.diffuse = vec4(1.0f, 0.9f, 0.3f, 1); fire2.material.name = "Fire";
-    fire2.scale = vec3(0.5f, 1.0f, 0.5f);
-    fire2.position = vec3(0, 0.12f * size, 0);
-    parts.push_back(fire2);
-    Part smoke; smoke.name = "Smoke";
-    smoke.mesh = create_cloud(0.08f * size, sd + 20.0f);
-    smoke.material.diffuse = vec4(0.4f, 0.4f, 0.42f, 0.4f); smoke.material.name = "Smoke";
-    smoke.position = vec3(0, 0.25f * size, 0);
-    parts.push_back(smoke);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_crate(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_crate_mesh(size * 0.4f);
-    body.material.diffuse = vec4(0.55f, 0.38f, 0.18f, 1); body.material.name = "Wood";
-    body.position = vec3(0, 0.2f * size, 0);
-    parts.push_back(body);
-    for (int i = 0; i < 2; i++) {
-        Part plank; plank.name = "Plank_" + std::to_string(i);
-        plank.mesh = create_cube(1.0f);
-        plank.material.diffuse = vec4(0.5f, 0.35f, 0.15f, 1); plank.material.name = "Wood";
-        plank.scale = vec3(0.42f * size, 0.02f * size, 0.01f * size);
-        float y = (i == 0 ? 0.12f : 0.28f) * size;
-        plank.position = vec3(0, y, 0.21f * size);
-        parts.push_back(plank);
-    }
-    Part nail1; nail1.name = "Nail_1";
-    nail1.mesh = create_organic_sphere(0.005f * size, 4, 3, sd + 1.0f, 0.2f);
-    nail1.material.diffuse = vec4(0.5f, 0.5f, 0.5f, 1); nail1.material.name = "Metal";
-    nail1.position = vec3(0.18f * size, 0.12f * size, 0.22f * size);
-    parts.push_back(nail1);
-    Part nail2; nail2.name = "Nail_2";
-    nail2.mesh = create_organic_sphere(0.005f * size, 4, 3, sd + 2.0f, 0.2f);
-    nail2.material.diffuse = vec4(0.5f, 0.5f, 0.5f, 1); nail2.material.name = "Metal";
-    nail2.position = vec3(-0.18f * size, 0.28f * size, 0.22f * size);
-    parts.push_back(nail2);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_barrel(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_barrel_mesh(size * 0.4f);
-    body.material.diffuse = vec4(0.5f, 0.32f, 0.14f, 1); body.material.name = "Wood";
-    body.position = vec3(0, 0.22f * size, 0);
-    parts.push_back(body);
-    for (int i = 0; i < 3; i++) {
-        Part band; band.name = "Band_" + std::to_string(i);
-        float y = (0.08f + i * 0.14f) * size;
-        band.mesh = create_ring(0.16f * size, 0.15f * size, 16);
-        band.material.diffuse = vec4(0.35f, 0.35f, 0.38f, 1); band.material.name = "Metal";
-        band.position = vec3(0, y, 0);
-        parts.push_back(band);
-    }
-    Part lid; lid.name = "Lid";
-    lid.mesh = create_organic_cylinder(0.15f * size, 0.02f * size, 12, sd + 5.0f, 0.05f);
-    lid.material.diffuse = vec4(0.48f, 0.3f, 0.13f, 1); lid.material.name = "Wood";
-    lid.position = vec3(0, 0.44f * size, 0);
-    parts.push_back(lid);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_bench(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part seat; seat.name = "Seat";
-    seat.mesh = create_bench_mesh(size * 0.5f);
-    seat.material.diffuse = vec4(0.5f, 0.33f, 0.15f, 1); seat.material.name = "Wood";
-    seat.position = vec3(0, 0.22f * size, 0);
-    parts.push_back(seat);
-    for (int i = 0; i < 2; i++) {
-        Part leg; leg.name = "Leg_" + std::to_string(i);
-        leg.mesh = create_cube(1.0f);
-        leg.material.diffuse = vec4(0.45f, 0.3f, 0.13f, 1); leg.material.name = "Wood";
-        float x = (i == 0 ? -0.22f : 0.22f) * size;
-        leg.scale = vec3(0.05f * size, 0.22f * size, 0.3f * size);
-        leg.position = vec3(x, 0.11f * size, 0);
-        parts.push_back(leg);
-    }
-    Part back; back.name = "Backrest";
-    back.mesh = create_cube(1.0f);
-    back.material.diffuse = vec4(0.52f, 0.35f, 0.16f, 1); back.material.name = "Wood";
-    back.scale = vec3(0.5f * size, 0.18f * size, 0.03f * size);
-    back.position = vec3(0, 0.38f * size, -0.15f * size);
-    deform_organic(back.mesh, 0.003f * size, sd + 2.0f);
-    parts.push_back(back);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_fountain(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part basin; basin.name = "Basin";
-    basin.mesh = create_fountain_mesh(size * 0.5f);
-    basin.material.diffuse = vec4(0.6f, 0.6f, 0.62f, 1); basin.material.name = "Stone";
-    basin.position = vec3(0, 0.08f * size, 0);
-    parts.push_back(basin);
-    Part pillar; pillar.name = "Pillar";
-    pillar.mesh = create_tapered_cylinder(0.04f * size, 0.06f * size, 0.35f * size, 10);
-    pillar.material.diffuse = vec4(0.58f, 0.58f, 0.6f, 1); pillar.material.name = "Stone";
-    pillar.position = vec3(0, 0.25f * size, 0);
-    parts.push_back(pillar);
-    Part top_bowl; top_bowl.name = "Top_Bowl";
-    top_bowl.mesh = create_organic_cylinder(0.08f * size, 0.03f * size, 10, sd + 3.0f, 0.06f);
-    top_bowl.material.diffuse = vec4(0.62f, 0.62f, 0.64f, 1); top_bowl.material.name = "Stone";
-    top_bowl.position = vec3(0, 0.44f * size, 0);
-    parts.push_back(top_bowl);
-    for (int i = 0; i < 4; i++) {
-        Part water; water.name = "Water_" + std::to_string(i);
-        float a = (float)i / 4.0f * (float)M_PI * 2;
-        water.mesh = create_organic_sphere(0.02f * size, 6, 4, sd + i * 4.0f, 0.3f);
-        water.material.diffuse = vec4(0.3f, 0.5f, 0.9f, 0.5f); water.material.name = "Water";
-        water.scale = vec3(0.5f, 1.5f, 0.5f);
-        water.position = vec3(cosf(a) * 0.04f * size, 0.48f * size, sinf(a) * 0.04f * size);
-        parts.push_back(water);
-    }
-    Part splash; splash.name = "Splash";
-    splash.mesh = create_cloud(0.06f * size, sd + 10.0f);
-    splash.material.diffuse = vec4(0.5f, 0.7f, 1.0f, 0.4f); splash.material.name = "Water";
-    splash.position = vec3(0, 0.5f * size, 0);
-    parts.push_back(splash);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_cart(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part bed; bed.name = "Bed";
-    bed.mesh = create_cart_mesh(size * 0.5f);
-    bed.material.diffuse = vec4(0.5f, 0.33f, 0.15f, 1); bed.material.name = "Wood";
-    bed.position = vec3(0, 0.2f * size, 0);
-    parts.push_back(bed);
-    for (int i = 0; i < 2; i++) {
-        Part wheel; wheel.name = "Wheel_" + std::to_string(i);
-        wheel.mesh = create_organic_cylinder(0.08f * size, 0.03f * size, 12, sd + i * 6.0f, 0.08f);
-        wheel.material.diffuse = vec4(0.4f, 0.25f, 0.1f, 1); wheel.material.name = "Wood";
-        float x = (i == 0 ? -0.22f : 0.22f) * size;
-        wheel.position = vec3(x, 0.08f * size, 0);
-        wheel.rotation = vec3(90, 0, 0);
-        parts.push_back(wheel);
-    }
-    Part handle; handle.name = "Handle";
-    handle.mesh = create_organic_cylinder(0.015f * size, 0.35f * size, 6, sd + 10.0f, 0.1f);
-    handle.material.diffuse = vec4(0.48f, 0.3f, 0.14f, 1); handle.material.name = "Wood";
-    handle.position = vec3(0, 0.3f * size, 0.25f * size);
-    handle.rotation = vec3(45, 0, 0);
-    parts.push_back(handle);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_lantern(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part frame; frame.name = "Frame";
-    frame.mesh = create_lantern_mesh(size * 0.4f);
-    frame.material.diffuse = vec4(0.35f, 0.35f, 0.38f, 1); frame.material.name = "Metal";
-    frame.position = vec3(0, 0.15f * size, 0);
-    parts.push_back(frame);
-    Part glass; glass.name = "Glass";
-    glass.mesh = create_organic_cylinder(0.06f * size, 0.12f * size, 10, sd + 2.0f, 0.05f);
-    glass.material.diffuse = vec4(0.9f, 0.85f, 0.5f, 0.4f); glass.material.name = "Glass";
-    glass.position = vec3(0, 0.15f * size, 0);
-    parts.push_back(glass);
-    Part flame; flame.name = "Flame";
-    flame.mesh = create_organic_sphere(0.02f * size, 6, 4, sd + 5.0f, 0.4f);
-    flame.material.diffuse = vec4(1.0f, 0.7f, 0.2f, 1); flame.material.name = "Fire";
-    flame.scale = vec3(0.7f, 1.3f, 0.7f);
-    flame.position = vec3(0, 0.15f * size, 0);
-    parts.push_back(flame);
-    Part hook; hook.name = "Hook";
-    hook.mesh = create_ring(0.03f * size, 0.02f * size, 8);
-    hook.material.diffuse = vec4(0.3f, 0.3f, 0.33f, 1); hook.material.name = "Metal";
-    hook.position = vec3(0, 0.28f * size, 0);
-    parts.push_back(hook);
-    Part base; base.name = "Base_Plate";
-    base.mesh = create_organic_cylinder(0.07f * size, 0.01f * size, 8, sd + 7.0f, 0.05f);
-    base.material.diffuse = vec4(0.38f, 0.38f, 0.4f, 1); base.material.name = "Metal";
-    base.position = vec3(0, 0.08f * size, 0);
-    parts.push_back(base);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_gun(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_gun_mesh(size * 0.5f);
-    body.material.diffuse = vec4(0.25f, 0.25f, 0.28f, 1); body.material.name = "Metal";
-    body.position = vec3(0, 0, 0);
-    parts.push_back(body);
-    Part grip; grip.name = "Grip";
-    grip.mesh = create_cube(1.0f);
-    grip.material.diffuse = vec4(0.35f, 0.25f, 0.15f, 1); grip.material.name = "Wood";
-    grip.scale = vec3(0.04f * size, 0.1f * size, 0.03f * size);
-    grip.position = vec3(0, -0.06f * size, -0.02f * size);
-    grip.rotation = vec3(15, 0, 0);
-    parts.push_back(grip);
-    Part barrel; barrel.name = "Barrel";
-    barrel.mesh = create_organic_cylinder(0.01f * size, 0.18f * size, 6, sd + 3.0f, 0.05f);
-    barrel.material.diffuse = vec4(0.22f, 0.22f, 0.25f, 1); barrel.material.name = "Metal";
-    barrel.position = vec3(0, 0.02f * size, 0.12f * size);
-    barrel.rotation = vec3(90, 0, 0);
-    parts.push_back(barrel);
-    Part trigger; trigger.name = "Trigger";
-    trigger.mesh = create_cube(1.0f);
-    trigger.material.diffuse = vec4(0.3f, 0.3f, 0.33f, 1); trigger.material.name = "Metal";
-    trigger.scale = vec3(0.008f * size, 0.025f * size, 0.015f * size);
-    trigger.position = vec3(0, -0.03f * size, 0.01f * size);
-    parts.push_back(trigger);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_scifi_turret(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part base; base.name = "Base";
-    base.mesh = create_scifi_turret_mesh(size * 0.5f);
-    base.material.diffuse = vec4(0.5f, 0.52f, 0.55f, 1); base.material.name = "Metal";
-    base.position = vec3(0, 0.1f * size, 0);
-    parts.push_back(base);
-    Part core; core.name = "Core";
-    core.mesh = create_organic_sphere(0.08f * size, 12, 10, sd + 3.0f, 0.1f);
-    core.material.diffuse = vec4(0.2f, 0.6f, 0.9f, 1); core.material.name = "Energy";
-    core.position = vec3(0, 0.2f * size, 0);
-    parts.push_back(core);
-    for (int i = 0; i < 2; i++) {
-        Part gun; gun.name = "Gun_" + std::to_string(i);
-        float x = (i == 0 ? -0.1f : 0.1f) * size;
-        gun.mesh = create_organic_cylinder(0.015f * size, 0.2f * size, 8, sd + i * 5.0f, 0.06f);
-        gun.material.diffuse = vec4(0.45f, 0.47f, 0.5f, 1); gun.material.name = "Metal";
-        gun.position = vec3(x, 0.22f * size, 0.08f * size);
-        gun.rotation = vec3(90, 0, 0);
-        parts.push_back(gun);
-    }
-    for (int i = 0; i < 4; i++) {
-        Part light; light.name = "Light_" + std::to_string(i);
-        float a = (float)i / 4.0f * (float)M_PI * 2;
-        light.mesh = create_organic_sphere(0.015f * size, 6, 4, sd + i * 3.0f, 0.2f);
-        light.material.diffuse = vec4(0.1f, 0.9f, 0.3f, 1); light.material.name = "Light";
-        light.position = vec3(cosf(a) * 0.12f * size, 0.15f * size, sinf(a) * 0.12f * size);
-        parts.push_back(light);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_crystal(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part main; main.name = "Main_Crystal";
-    main.mesh = create_crystal_mesh(size * 0.4f);
-    main.material.diffuse = vec4(0.6f, 0.2f, 0.8f, 0.7f); main.material.name = "Crystal";
-    main.position = vec3(0, 0.15f * size, 0);
-    parts.push_back(main);
-    for (int i = 0; i < 5; i++) {
-        Part shard; shard.name = "Shard_" + std::to_string(i);
-        float a = (float)i / 5.0f * (float)M_PI * 2 + randf() * 0.4f;
-        float h = 0.08f + randf() * 0.1f;
-        shard.mesh = create_crystal_mesh(size * (0.08f + randf() * 0.08f));
-        float r = 0.3f + randf() * 0.5f;
-        float g = 0.1f + randf() * 0.3f;
-        float b = 0.5f + randf() * 0.4f;
-        shard.material.diffuse = vec4(r, g, b, 0.65f); shard.material.name = "Crystal";
-        shard.position = vec3(cosf(a) * 0.12f * size, h * size * 0.5f, sinf(a) * 0.12f * size);
-        shard.rotation = vec3(randf() * 30 - 15, rad2deg(a), randf() * 20 - 10);
-        parts.push_back(shard);
-    }
-    Part base; base.name = "Base_Rock";
-    base.mesh = create_rock(0.15f * size, sd + 10.0f);
-    base.material.diffuse = vec4(0.4f, 0.38f, 0.42f, 1); base.material.name = "Stone";
-    base.position = vec3(0, -0.05f * size, 0);
-    parts.push_back(base);
-    Part glow; glow.name = "Glow";
-    glow.mesh = create_organic_sphere(0.2f * size, 10, 8, sd + 12.0f, 0.15f);
-    glow.material.diffuse = vec4(0.5f, 0.2f, 0.8f, 0.15f); glow.material.name = "Glow";
-    glow.position = vec3(0, 0.1f * size, 0);
-    parts.push_back(glow);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_coral(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part main; main.name = "Main_Coral";
-    main.mesh = create_coral_mesh(size * 0.4f);
-    main.material.diffuse = vec4(0.9f, 0.4f, 0.5f, 1); main.material.name = "Coral";
-    main.position = vec3(0, 0.1f * size, 0);
-    parts.push_back(main);
-    for (int i = 0; i < 3; i++) {
-        Part branch; branch.name = "Branch_" + std::to_string(i);
-        float a = (float)i / 3.0f * (float)M_PI * 2 + randf() * 0.5f;
-        branch.mesh = create_organic_cylinder(0.02f * size, (0.1f + randf() * 0.08f) * size, 6, sd + i * 5.0f, 0.2f);
-        float r = 0.8f + randf() * 0.15f;
-        float g = 0.3f + randf() * 0.3f;
-        branch.material.diffuse = vec4(r, g, 0.5f, 1); branch.material.name = "Coral";
-        branch.position = vec3(cosf(a) * 0.08f * size, 0.15f * size, sinf(a) * 0.08f * size);
-        branch.rotation = vec3(randf() * 30 - 15, 0, randf() * 30 - 15);
-        parts.push_back(branch);
-    }
-    Part base; base.name = "Base";
-    base.mesh = create_stone(0.1f * size, sd + 8.0f);
-    base.material.diffuse = vec4(0.5f, 0.5f, 0.55f, 1); base.material.name = "Stone";
-    base.position = vec3(0, -0.02f * size, 0);
-    parts.push_back(base);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_butterfly(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_butterfly_mesh(size * 0.4f);
-    body.material.diffuse = vec4(0.3f, 0.25f, 0.2f, 1); body.material.name = "Chitin";
-    body.position = vec3(0, 0.1f * size, 0);
-    parts.push_back(body);
-    for (int i = 0; i < 2; i++) {
-        Part wing; wing.name = "Wing_" + std::to_string(i);
-        wing.mesh = create_cube(1.0f);
-        float x = (i == 0 ? -0.12f : 0.12f) * size;
-        wing.material.diffuse = vec4(0.2f + randf() * 0.3f, 0.4f + randf() * 0.3f, 0.8f + randf() * 0.2f, 0.7f);
-        wing.material.name = "Wing";
-        wing.scale = vec3(0.1f * size, 0.005f * size, 0.15f * size);
-        wing.position = vec3(x, 0.12f * size, 0);
-        wing.rotation = vec3(10, 0, i == 0 ? 15 : -15);
-        deform_organic(wing.mesh, 0.003f * size, sd + i * 5.0f);
-        parts.push_back(wing);
-    }
-    for (int i = 0; i < 2; i++) {
-        Part antenna; antenna.name = "Antenna_" + std::to_string(i);
-        float x = (i == 0 ? -0.02f : 0.02f) * size;
-        antenna.mesh = create_organic_cylinder(0.002f * size, 0.08f * size, 4, sd + i * 3.0f, 0.1f);
-        antenna.material.diffuse = vec4(0.3f, 0.25f, 0.2f, 1); antenna.material.name = "Chitin";
-        antenna.position = vec3(x, 0.18f * size, 0.03f * size);
-        antenna.rotation = vec3(-30, 0, i == 0 ? -15 : 15);
-        parts.push_back(antenna);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_cat(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_cat_mesh(size * 0.5f);
-    body.material.diffuse = vec4(0.7f, 0.55f, 0.3f, 1); body.material.name = "Fur";
-    body.position = vec3(0, 0.15f * size, 0);
-    parts.push_back(body);
-    Part head; head.name = "Head";
-    head.mesh = create_organic_sphere(0.1f * size, 12, 10, sd + 2.0f, 0.1f);
-    head.material.diffuse = vec4(0.72f, 0.57f, 0.32f, 1); head.material.name = "Fur";
-    head.position = vec3(0, 0.28f * size, 0.12f * size);
-    parts.push_back(head);
-    for (int i = 0; i < 2; i++) {
-        Part ear; ear.name = "Ear_" + std::to_string(i);
-        float x = (i == 0 ? -0.05f : 0.05f) * size;
-        ear.mesh = create_pyramid_mesh(0.03f * size, 0.05f * size, 3);
-        ear.material.diffuse = vec4(0.68f, 0.53f, 0.28f, 1); ear.material.name = "Fur";
-        ear.position = vec3(x, 0.36f * size, 0.11f * size);
-        ear.rotation = vec3(i == 0 ? 10 : -10, 0, i == 0 ? -15 : 15);
-        parts.push_back(ear);
-    }
-    for (int i = 0; i < 4; i++) {
-        Part paw; paw.name = "Paw_" + std::to_string(i);
-        paw.mesh = create_organic_sphere(0.025f * size, 6, 4, sd + i * 4.0f, 0.15f);
-        paw.material.diffuse = vec4(0.7f, 0.55f, 0.3f, 1); paw.material.name = "Fur";
-        float x = (i % 2 == 0 ? -0.06f : 0.06f) * size;
-        float z = (i < 2 ? 0.08f : -0.08f) * size;
-        paw.position = vec3(x, 0.03f * size, z);
-        parts.push_back(paw);
-    }
-    Part tail; tail.name = "Tail";
-    tail.mesh = create_organic_cylinder(0.015f * size, 0.18f * size, 6, sd + 10.0f, 0.12f);
-    tail.material.diffuse = vec4(0.7f, 0.55f, 0.3f, 1); tail.material.name = "Fur";
-    tail.position = vec3(0, 0.18f * size, -0.14f * size);
-    tail.rotation = vec3(-45, 0, 10);
-    parts.push_back(tail);
-    Part eye1; eye1.name = "Eye_1";
-    eye1.mesh = create_organic_sphere(0.012f * size, 6, 4, sd + 12.0f, 0.1f);
-    eye1.material.diffuse = vec4(0.2f, 0.8f, 0.3f, 1); eye1.material.name = "Eye";
-    eye1.position = vec3(-0.03f * size, 0.3f * size, 0.2f * size);
-    parts.push_back(eye1);
-    Part eye2; eye2.name = "Eye_2";
-    eye2.mesh = create_organic_sphere(0.012f * size, 6, 4, sd + 13.0f, 0.1f);
-    eye2.material.diffuse = vec4(0.2f, 0.8f, 0.3f, 1); eye2.material.name = "Eye";
-    eye2.position = vec3(0.03f * size, 0.3f * size, 0.2f * size);
-    parts.push_back(eye2);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_dog(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_dog_mesh(size * 0.5f);
-    body.material.diffuse = vec4(0.55f, 0.4f, 0.25f, 1); body.material.name = "Fur";
-    body.position = vec3(0, 0.18f * size, 0);
-    parts.push_back(body);
-    Part head; head.name = "Head";
-    head.mesh = create_organic_sphere(0.1f * size, 12, 10, sd + 2.0f, 0.12f);
-    head.material.diffuse = vec4(0.57f, 0.42f, 0.27f, 1); head.material.name = "Fur";
-    head.position = vec3(0, 0.3f * size, 0.15f * size);
-    parts.push_back(head);
-    Part snout; snout.name = "Snout";
-    snout.mesh = create_organic_cylinder(0.03f * size, 0.06f * size, 6, sd + 4.0f, 0.1f);
-    snout.material.diffuse = vec4(0.5f, 0.38f, 0.22f, 1); snout.material.name = "Fur";
-    snout.position = vec3(0, 0.28f * size, 0.22f * size);
-    snout.rotation = vec3(90, 0, 0);
-    parts.push_back(snout);
-    for (int i = 0; i < 2; i++) {
-        Part ear; ear.name = "Ear_" + std::to_string(i);
-        float x = (i == 0 ? -0.07f : 0.07f) * size;
-        ear.mesh = create_organic_sphere(0.035f * size, 6, 4, sd + i * 5.0f, 0.15f);
-        ear.material.diffuse = vec4(0.45f, 0.33f, 0.2f, 1); ear.material.name = "Fur";
-        ear.scale = vec3(0.6f, 1.0f, 0.4f);
-        ear.position = vec3(x, 0.32f * size, 0.1f * size);
-        parts.push_back(ear);
-    }
-    for (int i = 0; i < 4; i++) {
-        Part paw; paw.name = "Paw_" + std::to_string(i);
-        paw.mesh = create_organic_sphere(0.03f * size, 6, 4, sd + i * 3.0f, 0.12f);
-        paw.material.diffuse = vec4(0.55f, 0.4f, 0.25f, 1); paw.material.name = "Fur";
-        float x = (i % 2 == 0 ? -0.07f : 0.07f) * size;
-        float z = (i < 2 ? 0.1f : -0.1f) * size;
-        paw.position = vec3(x, 0.03f * size, z);
-        parts.push_back(paw);
-    }
-    Part tail; tail.name = "Tail";
-    tail.mesh = create_organic_cylinder(0.015f * size, 0.15f * size, 6, sd + 10.0f, 0.1f);
-    tail.material.diffuse = vec4(0.55f, 0.4f, 0.25f, 1); tail.material.name = "Fur";
-    tail.position = vec3(0, 0.25f * size, -0.15f * size);
-    tail.rotation = vec3(-60, 0, 20);
-    parts.push_back(tail);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_bird(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Body";
-    body.mesh = create_bird_mesh(size * 0.4f);
-    body.material.diffuse = vec4(0.2f, 0.5f, 0.8f, 1); body.material.name = "Feathers";
-    body.position = vec3(0, 0.12f * size, 0);
-    parts.push_back(body);
-    Part head; head.name = "Head";
-    head.mesh = create_organic_sphere(0.05f * size, 8, 6, sd + 2.0f, 0.1f);
-    head.material.diffuse = vec4(0.15f, 0.45f, 0.75f, 1); head.material.name = "Feathers";
-    head.position = vec3(0, 0.2f * size, 0.08f * size);
-    parts.push_back(head);
-    Part beak; beak.name = "Beak";
-    beak.mesh = create_pyramid_mesh(0.015f * size, 0.04f * size, 3);
-    beak.material.diffuse = vec4(0.9f, 0.6f, 0.1f, 1); beak.material.name = "Keratin";
-    beak.position = vec3(0, 0.19f * size, 0.13f * size);
-    beak.rotation = vec3(90, 0, 0);
-    parts.push_back(beak);
-    for (int i = 0; i < 2; i++) {
-        Part wing; wing.name = "Wing_" + std::to_string(i);
-        float x = (i == 0 ? -0.1f : 0.1f) * size;
-        wing.mesh = create_cube(1.0f);
-        wing.material.diffuse = vec4(0.18f, 0.48f, 0.78f, 1); wing.material.name = "Feathers";
-        wing.scale = vec3(0.08f * size, 0.01f * size, 0.12f * size);
-        wing.position = vec3(x, 0.13f * size, -0.02f * size);
-        wing.rotation = vec3(0, 0, i == 0 ? 20 : -20);
-        deform_organic(wing.mesh, 0.002f * size, sd + i * 5.0f);
-        parts.push_back(wing);
-    }
-    Part eye; eye.name = "Eye";
-    eye.mesh = create_organic_sphere(0.008f * size, 4, 3, sd + 6.0f, 0.1f);
-    eye.material.diffuse = vec4(0.1f, 0.1f, 0.1f, 1); eye.material.name = "Eye";
-    eye.position = vec3(0.03f * size, 0.21f * size, 0.12f * size);
-    parts.push_back(eye);
-    for (int i = 0; i < 2; i++) {
-        Part leg; leg.name = "Leg_" + std::to_string(i);
-        float x = (i == 0 ? -0.03f : 0.03f) * size;
-        leg.mesh = create_organic_cylinder(0.005f * size, 0.08f * size, 4, sd + i * 3.0f, 0.08f);
-        leg.material.diffuse = vec4(0.8f, 0.5f, 0.1f, 1); leg.material.name = "Keratin";
-        leg.position = vec3(x, 0.04f * size, 0);
-        parts.push_back(leg);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_tree_stump(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part main; main.name = "Stump";
-    main.mesh = create_tree_stump_mesh(size * 0.4f);
-    main.material.diffuse = vec4(0.4f, 0.28f, 0.12f, 1); main.material.name = "Bark";
-    main.position = vec3(0, 0.1f * size, 0);
-    parts.push_back(main);
-    Part top; top.name = "Rings";
-    top.mesh = create_organic_cylinder(0.12f * size, 0.01f * size, 12, sd + 3.0f, 0.04f);
-    top.material.diffuse = vec4(0.55f, 0.4f, 0.22f, 1); top.material.name = "Wood";
-    top.position = vec3(0, 0.21f * size, 0);
-    parts.push_back(top);
-    for (int i = 0; i < 3; i++) {
-        Part moss; moss.name = "Moss_" + std::to_string(i);
-        float a = (float)i / 3.0f * (float)M_PI * 2 + randf() * 0.5f;
-        moss.mesh = create_leaf_cluster(0.03f * size, sd + i * 5.0f);
-        moss.material.diffuse = vec4(0.15f, 0.45f, 0.1f, 1); moss.material.name = "Moss";
-        moss.position = vec3(cosf(a) * 0.11f * size, 0.08f * size + randf() * 0.08f * size, sinf(a) * 0.11f * size);
-        parts.push_back(moss);
-    }
-    Part root; root.name = "Root";
-    root.mesh = create_log(0.02f * size, 0.12f * size, sd + 8.0f);
-    root.material.diffuse = vec4(0.38f, 0.26f, 0.1f, 1); root.material.name = "Root";
-    root.position = vec3(0.1f * size, 0.02f * size, 0.05f * size);
-    root.rotation = vec3(10, 30, -15);
-    parts.push_back(root);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_rock_wall(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part main; main.name = "Wall";
-    main.mesh = create_rock_wall_mesh(size * 0.5f);
-    main.material.diffuse = vec4(0.5f, 0.48f, 0.52f, 1); main.material.name = "Stone";
-    main.position = vec3(0, 0.3f * size, 0);
-    parts.push_back(main);
-    for (int i = 0; i < 8; i++) {
-        Part rock; rock.name = "Rock_" + std::to_string(i);
-        rock.mesh = create_stone((0.04f + randf() * 0.04f) * size, sd + i * 7.0f);
-        rock.material.diffuse = vec4(0.45f + randf() * 0.1f, 0.43f + randf() * 0.1f, 0.48f + randf() * 0.05f, 1);
-        rock.material.name = "Stone";
-        float x = (randf() - 0.5f) * 0.6f * size;
-        float y = randf() * 0.5f * size;
-        float z = (randf() - 0.5f) * 0.1f * size;
-        rock.position = vec3(x, y, z);
-        rock.rotation = vec3(randf() * 30, randf() * 360, randf() * 20);
-        parts.push_back(rock);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_grave(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part stone; stone.name = "Headstone";
-    stone.mesh = create_grave_mesh(size * 0.4f);
-    stone.material.diffuse = vec4(0.55f, 0.55f, 0.58f, 1); stone.material.name = "Stone";
-    stone.position = vec3(0, 0.2f * size, 0);
-    parts.push_back(stone);
-    Part mound; mound.name = "Mound";
-    mound.mesh = create_organic_sphere(0.15f * size, 10, 6, sd + 3.0f, 0.2f);
-    mound.material.diffuse = vec4(0.35f, 0.3f, 0.2f, 1); mound.material.name = "Dirt";
-    mound.scale = vec3(1.2f, 0.4f, 0.8f);
-    mound.position = vec3(0, 0.02f * size, 0.2f * size);
-    parts.push_back(mound);
-    Part cross; cross.name = "Cross";
-    cross.mesh = create_cube(1.0f);
-    cross.material.diffuse = vec4(0.5f, 0.5f, 0.53f, 1); cross.material.name = "Stone";
-    cross.scale = vec3(0.02f * size, 0.08f * size, 0.02f * size);
-    cross.position = vec3(0, 0.42f * size, 0);
-    parts.push_back(cross);
-    Part crossbar; crossbar.name = "Crossbar";
-    crossbar.mesh = create_cube(1.0f);
-    crossbar.material.diffuse = vec4(0.5f, 0.5f, 0.53f, 1); crossbar.material.name = "Stone";
-    crossbar.scale = vec3(0.06f * size, 0.02f * size, 0.02f * size);
-    crossbar.position = vec3(0, 0.44f * size, 0);
-    parts.push_back(crossbar);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_flag(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part pole; pole.name = "Pole";
-    pole.mesh = create_organic_cylinder(0.015f * size, 0.6f * size, 8, sd, 0.06f);
-    pole.material.diffuse = vec4(0.5f, 0.35f, 0.15f, 1); pole.material.name = "Wood";
-    pole.position = vec3(0, 0.3f * size, 0);
-    parts.push_back(pole);
-    Part cloth; cloth.name = "Flag_Cloth";
-    cloth.mesh = create_flag_mesh(size * 0.4f);
-    cloth.material.diffuse = vec4(0.8f, 0.15f, 0.1f, 1); cloth.material.name = "Fabric";
-    cloth.position = vec3(0.12f * size, 0.48f * size, 0);
-    parts.push_back(cloth);
-    Part finial; finial.name = "Finial";
-    finial.mesh = create_organic_sphere(0.02f * size, 6, 4, sd + 3.0f, 0.15f);
-    finial.material.diffuse = vec4(0.8f, 0.7f, 0.2f, 1); finial.material.name = "Gold";
-    finial.position = vec3(0, 0.62f * size, 0);
-    parts.push_back(finial);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_bookshelf(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part frame; frame.name = "Frame";
-    frame.mesh = create_bookshelf_mesh(size * 0.5f);
-    frame.material.diffuse = vec4(0.48f, 0.3f, 0.14f, 1); frame.material.name = "Wood";
-    frame.position = vec3(0, 0.4f * size, 0);
-    parts.push_back(frame);
-    for (int i = 0; i < 12; i++) {
-        Part book; book.name = "Book_" + std::to_string(i);
-        book.mesh = create_cube(1.0f);
-        float r = 0.15f + randf() * 0.6f;
-        float g = 0.1f + randf() * 0.4f;
-        float b = 0.1f + randf() * 0.6f;
-        book.material.diffuse = vec4(r, g, b, 1); book.material.name = "Cover";
-        int shelf = i / 4;
-        int pos = i % 4;
-        book.scale = vec3((0.03f + randf() * 0.02f) * size, (0.14f + randf() * 0.06f) * size, 0.1f * size);
-        book.position = vec3((-0.12f + pos * 0.08f + randf() * 0.02f) * size, (0.04f + shelf * 0.35f) * size, 0.02f * size);
-        book.rotation = vec3(0, 0, (randf() - 0.5f) * 5);
-        parts.push_back(book);
-    }
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_potion(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part flask; flask.name = "Flask";
-    flask.mesh = create_potion_mesh(size * 0.4f);
-    flask.material.diffuse = vec4(0.7f, 0.85f, 0.9f, 0.5f); flask.material.name = "Glass";
-    flask.position = vec3(0, 0.12f * size, 0);
-    parts.push_back(flask);
-    Part liquid; liquid.name = "Liquid";
-    liquid.mesh = create_organic_cylinder(0.06f * size, 0.08f * size, 10, sd + 2.0f, 0.08f);
-    liquid.material.diffuse = vec4(0.2f, 0.8f, 0.4f, 0.7f); liquid.material.name = "Potion";
-    liquid.position = vec3(0, 0.08f * size, 0);
-    parts.push_back(liquid);
-    Part cork; cork.name = "Cork";
-    cork.mesh = create_organic_cylinder(0.025f * size, 0.03f * size, 6, sd + 4.0f, 0.1f);
-    cork.material.diffuse = vec4(0.6f, 0.45f, 0.2f, 1); cork.material.name = "Cork";
-    cork.position = vec3(0, 0.19f * size, 0);
-    parts.push_back(cork);
-    Part bubble; bubble.name = "Bubble";
-    bubble.mesh = create_organic_sphere(0.008f * size, 4, 3, sd + 6.0f, 0.2f);
-    bubble.material.diffuse = vec4(0.3f, 0.9f, 0.5f, 0.4f); bubble.material.name = "Bubble";
-    bubble.position = vec3(0.02f * size, 0.1f * size, 0.01f * size);
-    parts.push_back(bubble);
-    Part glow; glow.name = "Glow";
-    glow.mesh = create_organic_sphere(0.1f * size, 8, 6, sd + 8.0f, 0.15f);
-    glow.material.diffuse = vec4(0.2f, 0.8f, 0.4f, 0.1f); glow.material.name = "Glow";
-    glow.position = vec3(0, 0.08f * size, 0);
-    parts.push_back(glow);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_cave(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part entrance; entrance.name = "Entrance";
-    entrance.mesh = create_cave_entrance(size * 0.5f);
-    entrance.material.diffuse = vec4(0.35f, 0.33f, 0.38f, 1); entrance.material.name = "Stone";
-    entrance.position = vec3(0, 0.2f * size, 0);
-    parts.push_back(entrance);
-    for (int i = 0; i < 5; i++) {
-        Part stalactite; stalactite.name = "Stalactite_" + std::to_string(i);
-        float x = (randf() - 0.5f) * 0.4f * size;
-        float z = (randf() - 0.5f) * 0.2f * size;
-        stalactite.mesh = create_tapered_cylinder(0.005f * size, 0.02f * size, (0.05f + randf() * 0.1f) * size, 6);
-        stalactite.material.diffuse = vec4(0.4f + randf() * 0.1f, 0.38f + randf() * 0.1f, 0.42f, 1);
-        stalactite.material.name = "Stone";
-        stalactite.position = vec3(x, 0.38f * size, z);
-        stalactite.rotation = vec3(180, 0, randf() * 20 - 10);
-        parts.push_back(stalactite);
-    }
-    for (int i = 0; i < 4; i++) {
-        Part rock; rock.name = "Rock_" + std::to_string(i);
-        rock.mesh = create_stone((0.05f + randf() * 0.05f) * size, sd + i * 7.0f);
-        rock.material.diffuse = vec4(0.38f + randf() * 0.08f, 0.36f + randf() * 0.08f, 0.4f, 1);
-        rock.material.name = "Stone";
-        rock.position = vec3((randf() - 0.5f) * 0.3f * size, 0.03f * size, (randf() - 0.5f) * 0.15f * size);
-        rock.rotation = vec3(randf() * 20, randf() * 360, randf() * 15);
-        parts.push_back(rock);
-    }
-    Part crystal; crystal.name = "Cave_Crystal";
-    crystal.mesh = create_crystal_mesh(0.06f * size);
-    crystal.material.diffuse = vec4(0.4f, 0.6f, 0.9f, 0.6f); crystal.material.name = "Crystal";
-    crystal.position = vec3(0.12f * size, 0.1f * size, 0.05f * size);
-    crystal.rotation = vec3(0, 0, -20);
-    parts.push_back(crystal);
-    return parts;
-}
-
-std::vector<ProceduralEngine::Part> ProceduralEngine::generate_tent(float size) {
-    std::vector<Part> parts;
-    float sd = randf() * 100.0f;
-    Part body; body.name = "Tent";
-    body.mesh = create_tent_mesh(size * 0.5f);
-    body.material.diffuse = vec4(0.6f, 0.45f, 0.2f, 1); body.material.name = "Canvas";
-    body.position = vec3(0, 0.18f * size, 0);
-    parts.push_back(body);
-    Part pole; pole.name = "Pole";
-    pole.mesh = create_organic_cylinder(0.015f * size, 0.4f * size, 6, sd + 2.0f, 0.06f);
-    pole.material.diffuse = vec4(0.5f, 0.35f, 0.15f, 1); pole.material.name = "Wood";
-    pole.position = vec3(0, 0.2f * size, 0);
-    parts.push_back(pole);
-    Part floor; floor.name = "Floor";
-    floor.mesh = create_organic_cylinder(0.2f * size, 0.01f * size, 10, sd + 4.0f, 0.05f);
-    floor.material.diffuse = vec4(0.45f, 0.4f, 0.35f, 1); floor.material.name = "Fabric";
-    floor.position = vec3(0, 0.01f * size, 0);
-    parts.push_back(floor);
-    Part rope1; rope1.name = "Rope_1";
-    rope1.mesh = create_organic_cylinder(0.005f * size, 0.3f * size, 4, sd + 6.0f, 0.05f);
-    rope1.material.diffuse = vec4(0.6f, 0.5f, 0.3f, 1); rope1.material.name = "Rope";
-    rope1.position = vec3(0.2f * size, 0.1f * size, 0.15f * size);
-    rope1.rotation = vec3(30, 0, -20);
-    parts.push_back(rope1);
-    return parts;
-}
-
-void ProceduralEngine::apply_vertex_color_noise(Mesh& m, vec4 base_color, float variation, float seed) {
+    mat3 nm = mat3_normal_from_mat4(M);
     for (auto& v : m.vertices) {
-        float n1 = noise3d(v.position.x*5.0f+seed, v.position.y*5.0f, v.position.z*5.0f);
-        float n2 = noise3d(v.position.x*8.0f+seed+50.0f, v.position.y*8.0f, v.position.z*8.0f);
-        float r = base_color.r + n1 * variation * 0.5f + n2 * variation * 0.2f;
-        float g = base_color.g + n1 * variation * 0.4f + n2 * variation * 0.15f;
-        float b = base_color.b + n1 * variation * 0.3f + n2 * variation * 0.1f;
-        v.color = vec4(clamp(r,0,1), clamp(g,0,1), clamp(b,0,1), base_color.a);
+        v.position = vec3(M * vec4(v.position, 1.0f));
+        v.normal = glm::normalize(nm * v.normal);
     }
+    m.dirty = true;
+    m.compute_normals();
 }
 
-void ProceduralEngine::apply_prompt_material(std::vector<Part>& parts, const ParsedPrompt& p) {
-    if (p.color.x >= 0) {
-        for (auto& part : parts) {
-            if (part.material.name != "Glass" && part.material.name != "Glow") {
-                part.material.diffuse = p.color;
+// ---- BUILD DISPATCH ----
+Mesh ParametricBuilder::build(const DecomposedObject& obj) {
+    Mesh result;
+    result.name = obj.name;
+
+    for (auto& vol : obj.volumes) {
+        Mesh part;
+        switch (vol.type) {
+            case VolumeType::Sphere: part = build_sphere(vol); break;
+            case VolumeType::Box: part = build_box(vol); break;
+            case VolumeType::Cylinder: part = build_cylinder(vol); break;
+            case VolumeType::Cone: part = build_cone(vol); break;
+            case VolumeType::Torus: part = build_torus(vol); break;
+            case VolumeType::Capsule: part = build_capsule(vol); break;
+            case VolumeType::Hemisphere: part = build_hemisphere(vol); break;
+            case VolumeType::Ring: part = build_ring(vol); break;
+            case VolumeType::Wedge: part = build_wedge(vol); break;
+            case VolumeType::Disc: part = build_disc(vol); break;
+            default: part = build_box(vol); break;
+        }
+
+        transform_mesh(part, vol);
+
+        // Apply material to each vertex color based on material
+        vec4 mat_color = vol.material.diffuse;
+        if (mat_color.w > 0.0f) {
+            for (auto& v : part.vertices) {
+                v.color = mat_color;
+            }
+        }
+
+        // Merge into result
+        uint32_t base = (uint32_t)result.vertices.size();
+        for (auto& v : part.vertices) {
+            result.add_vertex(v.position, v.normal, v.uv, v.color);
+        }
+        for (auto& f : part.faces) {
+            std::vector<uint32_t> fi;
+            for (auto& vi : f.vertices) fi.push_back(vi + base);
+            result.add_face(fi, f.normal);
+        }
+    }
+
+    result.compute_normals();
+    return result;
+}
+
+// ============================================================
+// DECOMPOSER — maps object types to volume decomposition rules
+// ============================================================
+
+Decomposer::Decomposer() { init_rules(); }
+
+VolumeDescription Decomposer::make_sphere(vec3 pos, float r, int seg) {
+    VolumeDescription v; v.type = VolumeType::Sphere;
+    v.position = pos; v.scale = vec3(1);
+    v.params.sphere.radius = r; v.segments = seg; v.rings = seg / 2;
+    return v;
+}
+
+VolumeDescription Decomposer::make_box(vec3 pos, vec3 sc) {
+    VolumeDescription v; v.type = VolumeType::Box;
+    v.position = pos; v.scale = sc;
+    return v;
+}
+
+VolumeDescription Decomposer::make_cylinder(vec3 pos, float r, float h, int seg) {
+    VolumeDescription v; v.type = VolumeType::Cylinder;
+    v.position = pos; v.scale = vec3(1);
+    v.params.cylinder.radius = r; v.params.cylinder.height = h; v.segments = seg;
+    return v;
+}
+
+VolumeDescription Decomposer::make_cone(vec3 pos, float r, float h, int seg) {
+    VolumeDescription v; v.type = VolumeType::Cone;
+    v.position = pos; v.scale = vec3(1);
+    v.params.cone.radius = r; v.params.cone.height = h; v.segments = seg;
+    return v;
+}
+
+VolumeDescription Decomposer::make_torus(vec3 pos, float major_r, float minor_r, int seg) {
+    VolumeDescription v; v.type = VolumeType::Torus;
+    v.position = pos; v.scale = vec3(1);
+    v.params.torus.major_r = major_r; v.params.torus.minor_r = minor_r;
+    v.segments = seg; v.rings = seg / 2;
+    return v;
+}
+
+VolumeDescription Decomposer::make_capsule(vec3 pos, float r, float h, int seg) {
+    VolumeDescription v; v.type = VolumeType::Capsule;
+    v.position = pos; v.scale = vec3(1);
+    v.params.capsule.radius = r; v.params.capsule.height = h; v.segments = seg;
+    return v;
+}
+
+VolumeDescription Decomposer::make_hemisphere(vec3 pos, float r, int seg) {
+    VolumeDescription v; v.type = VolumeType::Hemisphere;
+    v.position = pos; v.scale = vec3(1);
+    v.params.hemisphere.radius = r; v.segments = seg;
+    return v;
+}
+
+VolumeDescription Decomposer::make_ring(vec3 pos, float inner_r, float outer_r, int seg) {
+    VolumeDescription v; v.type = VolumeType::Ring;
+    v.position = pos; v.scale = vec3(1);
+    v.params.ring.inner_r = inner_r; v.params.ring.outer_r = outer_r; v.segments = seg;
+    return v;
+}
+
+VolumeDescription Decomposer::make_disc(vec3 pos, float r, float thickness, int seg) {
+    VolumeDescription v; v.type = VolumeType::Disc;
+    v.position = pos; v.scale = vec3(1);
+    v.params.disc.radius = r; v.params.disc.thickness = thickness; v.segments = seg;
+    return v;
+}
+
+VolumeDescription Decomposer::make_wedge(vec3 pos, float r, float h, float angle, int seg) {
+    VolumeDescription v; v.type = VolumeType::Wedge;
+    v.position = pos; v.scale = vec3(1);
+    v.params.wedge.radius = r; v.params.wedge.height = h;
+    v.params.wedge.angle = angle; v.segments = seg;
+    return v;
+}
+
+void Decomposer::init_rules() {
+    // Each rule maps keywords to a lambda that produces a DecomposedObject
+
+    rules.push_back({"car", {"car", "voiture", "auto", "automobile"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Car";
+            float s = sz * 1.5f;
+            float n = 0.08f;
+            float ns = 2.5f;
+
+            // Body (lower box)
+            auto body = make_box(vec3(0, s*0.25f, 0), vec3(s*1.8f, s*0.35f, s*0.8f));
+            body.noise_amount = n; body.noise_scale = ns; body.seed_offset = seed;
+            body.name = "Body";
+            obj.volumes.push_back(body);
+
+            // Cabin (upper box)
+            auto cabin = make_box(vec3(-s*0.15f, s*0.55f, 0), vec3(s*0.9f, s*0.3f, s*0.7f));
+            cabin.noise_amount = n; cabin.noise_scale = ns; cabin.seed_offset = seed + 1;
+            cabin.name = "Cabin";
+            obj.volumes.push_back(cabin);
+
+            // Hood (front wedge-ish)
+            auto hood = make_box(vec3(s*0.65f, s*0.35f, 0), vec3(s*0.5f, s*0.15f, s*0.75f));
+            hood.noise_amount = n*0.5f; hood.noise_scale = ns; hood.seed_offset = seed + 2;
+            hood.name = "Hood";
+            obj.volumes.push_back(hood);
+
+            // Trunk (rear box)
+            auto trunk = make_box(vec3(-s*0.7f, s*0.35f, 0), vec3(s*0.35f, s*0.2f, s*0.7f));
+            trunk.noise_amount = n*0.5f; trunk.noise_scale = ns; trunk.seed_offset = seed + 3;
+            trunk.name = "Trunk";
+            obj.volumes.push_back(trunk);
+
+            // 4 wheels (tori)
+            float wx = s*0.6f, wz = s*0.45f, wy = s*0.08f;
+            auto w1 = make_torus(vec3(wx, wy, wz), s*0.15f, s*0.06f, 16);
+            auto w2 = make_torus(vec3(wx, wy, -wz), s*0.15f, s*0.06f, 16);
+            auto w3 = make_torus(vec3(-wx, wy, wz), s*0.15f, s*0.06f, 16);
+            auto w4 = make_torus(vec3(-wx, wy, -wz), s*0.15f, s*0.06f, 16);
+            for (auto* w : {&w1,&w2,&w3,&w4}) {
+                w->noise_amount = 0.02f; w->noise_scale = 4.0f; w->seed_offset = seed + 10;
+                w->rotation = vec3((float)M_PI*0.5f, 0, 0);
+                w->material.diffuse = vec4(0.15f, 0.15f, 0.15f, 1);
+            }
+            w1.name = "WheelFR"; w2.name = "WheelFL";
+            w3.name = "WheelRR"; w4.name = "WheelRL";
+            obj.volumes.push_back(w1); obj.volumes.push_back(w2);
+            obj.volumes.push_back(w3); obj.volumes.push_back(w4);
+
+            // Headlights (small spheres)
+            auto hl1 = make_sphere(vec3(s*0.9f, s*0.3f, s*0.25f), s*0.05f, 12);
+            auto hl2 = make_sphere(vec3(s*0.9f, s*0.3f, -s*0.25f), s*0.05f, 12);
+            hl1.material.diffuse = vec4(1, 1, 0.8f, 1); hl1.material.emission = vec4(1, 1, 0.6f, 1);
+            hl2.material.diffuse = vec4(1, 1, 0.8f, 1); hl2.material.emission = vec4(1, 1, 0.6f, 1);
+            hl1.name = "HeadlightL"; hl2.name = "HeadlightR";
+            obj.volumes.push_back(hl1); obj.volumes.push_back(hl2);
+
+            // Taillights (small spheres)
+            auto tl1 = make_sphere(vec3(-s*0.87f, s*0.3f, s*0.25f), s*0.04f, 10);
+            auto tl2 = make_sphere(vec3(-s*0.87f, s*0.3f, -s*0.25f), s*0.04f, 10);
+            tl1.material.diffuse = vec4(0.8f, 0.05f, 0.05f, 1); tl1.material.emission = vec4(0.6f, 0, 0, 1);
+            tl2.material.diffuse = vec4(0.8f, 0.05f, 0.05f, 1); tl2.material.emission = vec4(0.6f, 0, 0, 1);
+            tl1.name = "TaillightL"; tl2.name = "TaillightR";
+            obj.volumes.push_back(tl1); obj.volumes.push_back(tl2);
+
+            if (col.w > 0) { body.material.diffuse = col; cabin.material.diffuse = col; }
+            return obj;
+        }
+    });
+
+    rules.push_back({"house", {"house", "maison", "home"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "House";
+            float s = sz;
+            float n = 0.06f;
+
+            // Walls (box)
+            auto walls = make_box(vec3(0, s*0.5f, 0), vec3(s*1.5f, s*1.0f, s*1.2f));
+            walls.noise_amount = n; walls.noise_scale = 3.0f; walls.seed_offset = seed;
+            walls.name = "Walls";
+            if (col.w > 0) walls.material.diffuse = col;
+            obj.volumes.push_back(walls);
+
+            // Roof (cone)
+            auto roof = make_cone(vec3(0, s*1.3f, 0), s*1.2f, s*0.8f, 4);
+            roof.noise_amount = 0.03f; roof.noise_scale = 2.0f; roof.seed_offset = seed + 5;
+            roof.rotation.y = (float)M_PI * 0.25f;
+            roof.material.diffuse = vec4(0.6f, 0.15f, 0.1f, 1);
+            roof.name = "Roof";
+            obj.volumes.push_back(roof);
+
+            // Door (box)
+            auto door = make_box(vec3(s*0.4f, s*0.35f, s*0.601f), vec3(s*0.2f, s*0.5f, s*0.05f));
+            door.noise_amount = 0.02f; door.noise_scale = 5.0f; door.seed_offset = seed + 10;
+            door.material.diffuse = vec4(0.4f, 0.25f, 0.1f, 1);
+            door.name = "Door";
+            obj.volumes.push_back(door);
+
+            // Window left (box)
+            auto win_l = make_box(vec3(-s*0.3f, s*0.6f, s*0.601f), vec3(s*0.2f, s*0.2f, s*0.05f));
+            win_l.material.diffuse = vec4(0.6f, 0.8f, 1.0f, 0.8f);
+            win_l.name = "WindowL";
+            obj.volumes.push_back(win_l);
+
+            // Window right (box)
+            auto win_r = make_box(vec3(s*0.3f, s*0.6f, -s*0.601f), vec3(s*0.2f, s*0.2f, s*0.05f));
+            win_r.material.diffuse = vec4(0.6f, 0.8f, 1.0f, 0.8f);
+            win_r.name = "WindowR";
+            obj.volumes.push_back(win_r);
+
+            // Chimney (cylinder)
+            auto chimney = make_cylinder(vec3(-s*0.4f, s*1.2f, -s*0.2f), s*0.08f, s*0.4f, 8);
+            chimney.noise_amount = 0.04f; chimney.noise_scale = 4.0f; chimney.seed_offset = seed + 15;
+            chimney.material.diffuse = vec4(0.45f, 0.25f, 0.15f, 1);
+            chimney.name = "Chimney";
+            obj.volumes.push_back(chimney);
+
+            // Foundation (box)
+            auto foundation = make_box(vec3(0, -s*0.02f, 0), vec3(s*1.6f, s*0.06f, s*1.3f));
+            foundation.noise_amount = 0.03f; foundation.noise_scale = 4.0f; foundation.seed_offset = seed + 20;
+            foundation.material.diffuse = vec4(0.5f, 0.5f, 0.5f, 1);
+            foundation.name = "Foundation";
+            obj.volumes.push_back(foundation);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"tree", {"tree", "arbre"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Tree";
+            float s = sz;
+
+            // Trunk (cylinder, tapered)
+            auto trunk = make_cylinder(vec3(0, s*0.4f, 0), s*0.1f, s*0.8f, 10);
+            trunk.noise_amount = 0.08f; trunk.noise_scale = 4.0f; trunk.seed_offset = seed;
+            trunk.material.diffuse = vec4(0.38f, 0.24f, 0.09f, 1);
+            trunk.name = "Trunk";
+            obj.volumes.push_back(trunk);
+
+            // Foliage layers (3 spheres, different sizes and heights)
+            float foliage_colors[3][3] = {{0.08f,0.45f,0.08f},{0.12f,0.5f,0.1f},{0.06f,0.4f,0.06f}};
+            for (int i = 0; i < 3; i++) {
+                float h = s * (0.9f + i * 0.35f);
+                float r = s * (0.55f - i * 0.08f);
+                float x_off = fbm3d((float)i * 3.0f + seed, 0, 0, 3) * s * 0.15f;
+                float z_off = fbm3d(0, (float)i * 3.0f + seed, 0, 3) * s * 0.15f;
+                auto foliage = make_sphere(vec3(x_off, h, z_off), r, 16);
+                foliage.noise_amount = 0.25f; foliage.noise_scale = 2.5f;
+                foliage.seed_offset = seed + (float)(i + 1) * 7.0f;
+                foliage.material.diffuse = vec4(foliage_colors[i][0], foliage_colors[i][1], foliage_colors[i][2], 1);
+                foliage.name = "Foliage" + std::to_string(i);
+                obj.volumes.push_back(foliage);
+            }
+
+            // Root bulges
+            for (int i = 0; i < 4; i++) {
+                float angle = (float)M_PI * 2.0f * i / 4.0f + seed * 0.1f;
+                float x = cosf(angle) * s * 0.15f;
+                float z = sinf(angle) * s * 0.15f;
+                auto root = make_sphere(vec3(x, -s*0.05f, z), s*0.08f, 8);
+                root.noise_amount = 0.15f; root.noise_scale = 3.0f; root.seed_offset = seed + 30 + (float)i;
+                root.scale = vec3(1.5f, 0.5f, 1.5f);
+                root.material.diffuse = vec4(0.35f, 0.22f, 0.08f, 1);
+                root.name = "Root" + std::to_string(i);
+                obj.volumes.push_back(root);
+            }
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"robot", {"robot"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Robot";
+            float s = sz;
+            float n = 0.04f;
+
+            // Head (box)
+            auto head = make_box(vec3(0, s*1.6f, 0), vec3(s*0.5f, s*0.45f, s*0.45f));
+            head.noise_amount = n; head.noise_scale = 3.0f; head.seed_offset = seed;
+            head.material.diffuse = vec4(0.6f, 0.65f, 0.7f, 1);
+            head.name = "Head";
+            obj.volumes.push_back(head);
+
+            // Eyes (spheres, emissive)
+            auto eye_l = make_sphere(vec3(-s*0.12f, s*1.65f, s*0.23f), s*0.06f, 10);
+            auto eye_r = make_sphere(vec3(s*0.12f, s*1.65f, s*0.23f), s*0.06f, 10);
+            eye_l.material.diffuse = vec4(0, 1, 0.5f, 1); eye_l.material.emission = vec4(0, 0.8f, 0.4f, 1);
+            eye_r.material.diffuse = vec4(0, 1, 0.5f, 1); eye_r.material.emission = vec4(0, 0.8f, 0.4f, 1);
+            eye_l.name = "EyeL"; eye_r.name = "EyeR";
+            obj.volumes.push_back(eye_l); obj.volumes.push_back(eye_r);
+
+            // Neck (cylinder)
+            auto neck = make_cylinder(vec3(0, s*1.3f, 0), s*0.08f, s*0.15f, 8);
+            neck.noise_amount = 0.02f; neck.seed_offset = seed + 5;
+            neck.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1);
+            neck.name = "Neck";
+            obj.volumes.push_back(neck);
+
+            // Torso (box)
+            auto torso = make_box(vec3(0, s*0.85f, 0), vec3(s*0.6f, s*0.8f, s*0.4f));
+            torso.noise_amount = n; torso.noise_scale = 3.0f; torso.seed_offset = seed + 1;
+            torso.material.diffuse = vec4(0.55f, 0.6f, 0.65f, 1);
+            torso.name = "Torso";
+            obj.volumes.push_back(torso);
+
+            // Arms (capsules)
+            auto arm_l = make_capsule(vec3(-s*0.45f, s*0.8f, 0), s*0.08f, s*0.6f, 10);
+            auto arm_r = make_capsule(vec3(s*0.45f, s*0.8f, 0), s*0.08f, s*0.6f, 10);
+            arm_l.noise_amount = n; arm_l.seed_offset = seed + 10;
+            arm_r.noise_amount = n; arm_r.seed_offset = seed + 11;
+            arm_l.material.diffuse = vec4(0.5f, 0.55f, 0.6f, 1);
+            arm_r.material.diffuse = vec4(0.5f, 0.55f, 0.6f, 1);
+            arm_l.name = "ArmL"; arm_r.name = "ArmR";
+            obj.volumes.push_back(arm_l); obj.volumes.push_back(arm_r);
+
+            // Legs (capsules)
+            auto leg_l = make_capsule(vec3(-s*0.15f, s*0.15f, 0), s*0.1f, s*0.6f, 10);
+            auto leg_r = make_capsule(vec3(s*0.15f, s*0.15f, 0), s*0.1f, s*0.6f, 10);
+            leg_l.noise_amount = n; leg_l.seed_offset = seed + 20;
+            leg_r.noise_amount = n; leg_r.seed_offset = seed + 21;
+            leg_l.material.diffuse = vec4(0.5f, 0.55f, 0.6f, 1);
+            leg_r.material.diffuse = vec4(0.5f, 0.55f, 0.6f, 1);
+            leg_l.name = "LegL"; leg_r.name = "LegR";
+            obj.volumes.push_back(leg_l); obj.volumes.push_back(leg_r);
+
+            // Feet (boxes)
+            auto foot_l = make_box(vec3(-s*0.15f, -s*0.05f, s*0.05f), vec3(s*0.15f, s*0.1f, s*0.2f));
+            auto foot_r = make_box(vec3(s*0.15f, -s*0.05f, s*0.05f), vec3(s*0.15f, s*0.1f, s*0.2f));
+            foot_l.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1);
+            foot_r.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1);
+            foot_l.name = "FootL"; foot_r.name = "FootR";
+            obj.volumes.push_back(foot_l); obj.volumes.push_back(foot_r);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"castle", {"castle", "chateau"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Castle";
+            float s = sz * 2.0f;
+            float n = 0.05f;
+            vec4 stone_col(0.55f, 0.52f, 0.48f, 1);
+
+            // Main wall (box)
+            auto wall = make_box(vec3(0, s*0.5f, 0), vec3(s*2.0f, s*1.0f, s*2.0f));
+            wall.noise_amount = n; wall.noise_scale = 3.0f; wall.seed_offset = seed;
+            wall.material.diffuse = stone_col; wall.name = "MainWall";
+            obj.volumes.push_back(wall);
+
+            // 4 towers (cylinders)
+            float tw = s*0.35f, th = s*1.8f;
+            vec3 tower_pos[4] = {vec3(tw,tw,0),vec3(-tw,tw,0),vec3(0,tw,tw),vec3(0,tw,-tw)};
+            for (int i = 0; i < 4; i++) {
+                auto tower = make_cylinder(tower_pos[i], s*0.3f, th, 12);
+                tower.noise_amount = n; tower.noise_scale = 3.5f; tower.seed_offset = seed + (float)(i+1)*5;
+                tower.material.diffuse = stone_col;
+                tower.name = "Tower" + std::to_string(i);
+                obj.volumes.push_back(tower);
+
+                // Cone roof on each tower
+                auto tower_roof = make_cone(vec3(tower_pos[i].x, th*0.5f+s*0.3f, tower_pos[i].z), s*0.4f, s*0.6f, 12);
+                tower_roof.noise_amount = 0.03f; tower_roof.seed_offset = seed + (float)(i+1)*10;
+                tower_roof.material.diffuse = vec4(0.5f, 0.12f, 0.08f, 1);
+                tower_roof.name = "TowerRoof" + std::to_string(i);
+                obj.volumes.push_back(tower_roof);
+            }
+
+            // Gate (box)
+            auto gate = make_box(vec3(0, s*0.35f, s*1.001f), vec3(s*0.4f, s*0.7f, s*0.05f));
+            gate.noise_amount = 0.02f; gate.seed_offset = seed + 50;
+            gate.material.diffuse = vec4(0.35f, 0.2f, 0.08f, 1);
+            gate.name = "Gate";
+            obj.volumes.push_back(gate);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"sword", {"sword", "epee", "blade"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Sword";
+            float s = sz;
+
+            // Blade (box, thin and long)
+            auto blade = make_box(vec3(0, s*0.6f, 0), vec3(s*0.06f, s*1.2f, s*0.01f));
+            blade.noise_amount = 0.02f; blade.noise_scale = 5.0f; blade.seed_offset = seed;
+            blade.material.diffuse = vec4(0.8f, 0.82f, 0.85f, 1);
+            blade.material.metallic = 0.9f; blade.material.roughness = 0.15f;
+            blade.name = "Blade";
+            obj.volumes.push_back(blade);
+
+            // Guard (box)
+            auto guard = make_box(vec3(0, s*0.0f, 0), vec3(s*0.25f, s*0.04f, s*0.06f));
+            guard.noise_amount = 0.02f; guard.seed_offset = seed + 5;
+            guard.material.diffuse = vec4(0.75f, 0.6f, 0.1f, 1);
+            guard.material.metallic = 0.85f;
+            guard.name = "Guard";
+            obj.volumes.push_back(guard);
+
+            // Handle (cylinder)
+            auto handle = make_cylinder(vec3(0, -s*0.15f, 0), s*0.025f, s*0.25f, 8);
+            handle.noise_amount = 0.03f; handle.seed_offset = seed + 10;
+            handle.material.diffuse = vec4(0.3f, 0.18f, 0.08f, 1);
+            handle.name = "Handle";
+            obj.volumes.push_back(handle);
+
+            // Pommel (sphere)
+            auto pommel = make_sphere(vec3(0, -s*0.3f, 0), s*0.04f, 10);
+            pommel.material.diffuse = vec4(0.75f, 0.6f, 0.1f, 1);
+            pommel.material.metallic = 0.85f;
+            pommel.name = "Pommel";
+            obj.volumes.push_back(pommel);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"spaceship", {"spaceship", "vaisseau", "ship", "rocket"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Spaceship";
+            float s = sz * 1.5f;
+
+            // Main hull (capsule)
+            auto hull = make_capsule(vec3(0, 0, 0), s*0.25f, s*0.8f, 16);
+            hull.noise_amount = 0.03f; hull.noise_scale = 3.0f; hull.seed_offset = seed;
+            hull.material.diffuse = vec4(0.7f, 0.72f, 0.75f, 1);
+            hull.material.metallic = 0.7f;
+            hull.name = "Hull";
+            obj.volumes.push_back(hull);
+
+            // Wings (boxes, swept back)
+            auto wing_l = make_box(vec3(-s*0.5f, -s*0.05f, 0), vec3(s*0.6f, s*0.03f, s*0.3f));
+            auto wing_r = make_box(vec3(s*0.5f, -s*0.05f, 0), vec3(s*0.6f, s*0.03f, s*0.3f));
+            wing_l.rotation.z = 0.1f; wing_r.rotation.z = -0.1f;
+            wing_l.noise_amount = 0.02f; wing_r.noise_amount = 0.02f;
+            wing_l.seed_offset = seed + 5; wing_r.seed_offset = seed + 6;
+            wing_l.material.diffuse = vec4(0.6f, 0.62f, 0.65f, 1);
+            wing_r.material.diffuse = vec4(0.6f, 0.62f, 0.65f, 1);
+            wing_l.name = "WingL"; wing_r.name = "WingR";
+            obj.volumes.push_back(wing_l); obj.volumes.push_back(wing_r);
+
+            // Engine pods (cylinders)
+            auto eng_l = make_cylinder(vec3(-s*0.35f, -s*0.1f, -s*0.3f), s*0.08f, s*0.3f, 10);
+            auto eng_r = make_cylinder(vec3(s*0.35f, -s*0.1f, -s*0.3f), s*0.08f, s*0.3f, 10);
+            eng_l.noise_amount = 0.04f; eng_r.noise_amount = 0.04f;
+            eng_l.seed_offset = seed + 10; eng_r.seed_offset = seed + 11;
+            eng_l.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1);
+            eng_r.material.diffuse = vec4(0.4f, 0.42f, 0.45f, 1);
+            eng_l.name = "EngineL"; eng_r.name = "EngineR";
+            obj.volumes.push_back(eng_l); obj.volumes.push_back(eng_r);
+
+            // Cockpit (hemisphere)
+            auto cockpit = make_hemisphere(vec3(0, s*0.15f, s*0.4f), s*0.12f, 12);
+            cockpit.material.diffuse = vec4(0.3f, 0.6f, 0.9f, 0.8f);
+            cockpit.name = "Cockpit";
+            obj.volumes.push_back(cockpit);
+
+            // Thrusters (discs, emissive)
+            auto thr_l = make_disc(vec3(-s*0.35f, -s*0.1f, -s*0.46f), s*0.06f, s*0.02f, 10);
+            auto thr_r = make_disc(vec3(s*0.35f, -s*0.1f, -s*0.46f), s*0.06f, s*0.02f, 10);
+            thr_l.material.diffuse = vec4(0.2f, 0.5f, 1.0f, 1); thr_l.material.emission = vec4(0.1f, 0.3f, 0.8f, 1);
+            thr_r.material.diffuse = vec4(0.2f, 0.5f, 1.0f, 1); thr_r.material.emission = vec4(0.1f, 0.3f, 0.8f, 1);
+            thr_l.name = "ThrusterL"; thr_r.name = "ThrusterR";
+            obj.volumes.push_back(thr_l); obj.volumes.push_back(thr_r);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"chair", {"chair", "chaise"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Chair";
+            float s = sz;
+
+            // Seat (box)
+            auto seat = make_box(vec3(0, s*0.45f, 0), vec3(s*0.5f, s*0.04f, s*0.5f));
+            seat.noise_amount = 0.03f; seat.seed_offset = seed;
+            seat.name = "Seat";
+            if (col.w > 0) seat.material.diffuse = col;
+            obj.volumes.push_back(seat);
+
+            // Backrest (box)
+            auto back = make_box(vec3(0, s*0.75f, -s*0.23f), vec3(s*0.5f, s*0.55f, s*0.04f));
+            back.noise_amount = 0.03f; back.seed_offset = seed + 1;
+            back.name = "Backrest";
+            if (col.w > 0) back.material.diffuse = col;
+            obj.volumes.push_back(back);
+
+            // 4 legs (cylinders)
+            float lx = s*0.2f, lz = s*0.2f;
+            vec3 leg_pos[4] = {vec3(lx,0.22f*s,lz), vec3(-lx,0.22f*s,lz), vec3(lx,0.22f*s,-lz), vec3(-lx,0.22f*s,-lz)};
+            for (int i = 0; i < 4; i++) {
+                auto leg = make_cylinder(leg_pos[i], s*0.025f, s*0.45f, 8);
+                leg.noise_amount = 0.02f; leg.seed_offset = seed + (float)(i + 10);
+                leg.name = "Leg" + std::to_string(i);
+                if (col.w > 0) leg.material.diffuse = col;
+                obj.volumes.push_back(leg);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"table", {"table"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Table";
+            float s = sz;
+
+            // Top (box)
+            auto top = make_box(vec3(0, s*0.5f, 0), vec3(s*1.0f, s*0.05f, s*0.6f));
+            top.noise_amount = 0.03f; top.seed_offset = seed;
+            top.name = "TableTop";
+            if (col.w > 0) top.material.diffuse = col;
+            obj.volumes.push_back(top);
+
+            // 4 legs
+            float lx = s*0.42f, lz = s*0.24f;
+            vec3 leg_pos[4] = {vec3(lx,0.24f*s,lz), vec3(-lx,0.24f*s,lz), vec3(lx,0.24f*s,-lz), vec3(-lx,0.24f*s,-lz)};
+            for (int i = 0; i < 4; i++) {
+                auto leg = make_cylinder(leg_pos[i], s*0.03f, s*0.48f, 8);
+                leg.noise_amount = 0.02f; leg.seed_offset = seed + (float)(i + 10);
+                leg.name = "Leg" + std::to_string(i);
+                if (col.w > 0) leg.material.diffuse = col;
+                obj.volumes.push_back(leg);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"donut", {"donut", "donut", "beignet", "ring donut"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Donut";
+            float s = sz;
+
+            // Main torus
+            auto torus = make_torus(vec3(0, 0, 0), s*0.35f, s*0.15f, 24);
+            torus.noise_amount = 0.08f; torus.noise_scale = 3.0f; torus.seed_offset = seed;
+            torus.name = "DonutBody";
+            torus.material.diffuse = col.w > 0 ? col : vec4(0.85f, 0.55f, 0.3f, 1);
+            obj.volumes.push_back(torus);
+
+            // Frosting torus (slightly larger, top half)
+            auto frost = make_torus(vec3(0, s*0.03f, 0), s*0.35f, s*0.155f, 24);
+            frost.noise_amount = 0.12f; frost.noise_scale = 2.5f; frost.seed_offset = seed + 5;
+            frost.name = "Frosting";
+            frost.material.diffuse = vec4(0.95f, 0.7f, 0.85f, 1);
+            obj.volumes.push_back(frost);
+
+            // Sprinkles (tiny spheres)
+            for (int i = 0; i < 12; i++) {
+                float angle = (float)M_PI * 2.0f * i / 12.0f;
+                float cx = cosf(angle) * s * 0.35f;
+                float cz = sinf(angle) * s * 0.35f;
+                auto sp = make_sphere(vec3(cx, s*0.12f, cz), s*0.02f, 6);
+                sp.material.diffuse = vec4(
+                    0.5f + 0.5f * noise2d(seed + (float)i, 0),
+                    0.5f + 0.5f * noise2d(seed + (float)i, 1),
+                    0.5f + 0.5f * noise2d(seed + (float)i, 2), 1);
+                sp.name = "Sprinkle" + std::to_string(i);
+                obj.volumes.push_back(sp);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"star", {"star", "etoile"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Star";
+            float s = sz;
+
+            // Central sphere
+            auto center = make_sphere(vec3(0, 0, 0), s*0.25f, 16);
+            center.noise_amount = 0.05f; center.seed_offset = seed;
+            center.material.diffuse = col.w > 0 ? col : vec4(1.0f, 0.9f, 0.2f, 1);
+            center.material.emission = vec4(0.5f, 0.45f, 0.1f, 1);
+            center.name = "Center";
+            obj.volumes.push_back(center);
+
+            // 5 points (wedges)
+            for (int i = 0; i < 5; i++) {
+                float angle = (float)M_PI * 2.0f * i / 5.0f - (float)M_PI * 0.5f;
+                float px = cosf(angle) * s * 0.3f;
+                float py = sinf(angle) * s * 0.3f;
+                auto point = make_wedge(vec3(px, py, 0), s*0.08f, s*0.04f, (float)M_PI*2, 12);
+                point.noise_amount = 0.05f; point.seed_offset = seed + (float)(i+1)*3;
+                point.rotation.z = angle + (float)M_PI * 0.5f;
+                point.material.diffuse = vec4(1.0f, 0.85f, 0.1f, 1);
+                point.material.emission = vec4(0.4f, 0.35f, 0.05f, 1);
+                point.name = "Point" + std::to_string(i);
+                obj.volumes.push_back(point);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"heart", {"heart", "coeur"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Heart";
+            float s = sz;
+
+            // Two upper lobes (spheres)
+            auto lobe_l = make_sphere(vec3(-s*0.15f, s*0.1f, 0), s*0.2f, 16);
+            auto lobe_r = make_sphere(vec3(s*0.15f, s*0.1f, 0), s*0.2f, 16);
+            lobe_l.noise_amount = 0.06f; lobe_r.noise_amount = 0.06f;
+            lobe_l.seed_offset = seed; lobe_r.seed_offset = seed + 5;
+            lobe_l.material.diffuse = col.w > 0 ? col : vec4(0.9f, 0.1f, 0.15f, 1);
+            lobe_r.material.diffuse = col.w > 0 ? col : vec4(0.9f, 0.1f, 0.15f, 1);
+            lobe_l.name = "LobeL"; lobe_r.name = "LobeR";
+            obj.volumes.push_back(lobe_l); obj.volumes.push_back(lobe_r);
+
+            // Lower cone (bottom point)
+            auto bottom = make_cone(vec3(0, -s*0.15f, 0), s*0.2f, s*0.4f, 16);
+            bottom.noise_amount = 0.06f; bottom.seed_offset = seed + 10;
+            bottom.rotation.x = (float)M_PI;
+            bottom.material.diffuse = col.w > 0 ? col : vec4(0.9f, 0.1f, 0.15f, 1);
+            bottom.name = "BottomPoint";
+            obj.volumes.push_back(bottom);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"mushroom", {"mushroom", "champignon"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Mushroom";
+            float s = sz;
+
+            // Stem (cylinder, slightly tapered)
+            auto stem = make_cylinder(vec3(0, s*0.2f, 0), s*0.08f, s*0.4f, 10);
+            stem.noise_amount = 0.06f; stem.noise_scale = 3.0f; stem.seed_offset = seed;
+            stem.material.diffuse = vec4(0.9f, 0.88f, 0.82f, 1);
+            stem.name = "Stem";
+            obj.volumes.push_back(stem);
+
+            // Cap (hemisphere)
+            auto cap = make_hemisphere(vec3(0, s*0.5f, 0), s*0.3f, 16);
+            cap.noise_amount = 0.1f; cap.noise_scale = 2.5f; cap.seed_offset = seed + 5;
+            cap.material.diffuse = col.w > 0 ? col : vec4(0.8f, 0.15f, 0.1f, 1);
+            cap.name = "Cap";
+            obj.volumes.push_back(cap);
+
+            // Spots on cap (tiny spheres)
+            for (int i = 0; i < 6; i++) {
+                float angle = (float)M_PI * 2.0f * i / 6.0f + seed * 0.2f;
+                float r = s * 0.15f * (0.5f + 0.5f * noise2d(seed + (float)i, 100));
+                float x = cosf(angle) * r;
+                float z = sinf(angle) * r;
+                auto spot = make_sphere(vec3(x, s*0.55f + s*0.08f, z), s*0.035f, 8);
+                spot.material.diffuse = vec4(0.95f, 0.93f, 0.88f, 1);
+                spot.name = "Spot" + std::to_string(i);
+                obj.volumes.push_back(spot);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"crystal", {"crystal", "cristal"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Crystal";
+            float s = sz;
+
+            // Main crystal (cone)
+            auto main = make_cone(vec3(0, s*0.4f, 0), s*0.12f, s*0.8f, 6);
+            main.noise_amount = 0.03f; main.noise_scale = 4.0f; main.seed_offset = seed;
+            main.material.diffuse = col.w > 0 ? col : vec4(0.4f, 0.6f, 0.95f, 0.85f);
+            main.material.metallic = 0.1f; main.material.roughness = 0.05f;
+            main.material.opacity = 0.85f;
+            main.name = "MainCrystal";
+            obj.volumes.push_back(main);
+
+            // Secondary crystals
+            for (int i = 0; i < 4; i++) {
+                float angle = (float)M_PI * 2.0f * i / 4.0f + seed * 0.3f;
+                float dist = s * 0.15f;
+                float x = cosf(angle) * dist;
+                float z = sinf(angle) * dist;
+                float h = s * (0.3f + 0.3f * noise2d(seed + (float)i, 50));
+                auto cr = make_cone(vec3(x, h*0.5f, z), s*0.06f, h, 6);
+                cr.noise_amount = 0.04f; cr.seed_offset = seed + (float)(i+1)*7;
+                cr.rotation.x = (noise2d(seed+(float)i, 60) - 0.5f) * 0.3f;
+                cr.rotation.z = (noise2d(seed+(float)i, 70) - 0.5f) * 0.3f;
+                cr.material.diffuse = vec4(0.5f, 0.65f, 0.95f, 0.8f);
+                cr.material.opacity = 0.8f;
+                cr.name = "Crystal" + std::to_string(i);
+                obj.volumes.push_back(cr);
+            }
+
+            // Base rock
+            auto base = make_sphere(vec3(0, -s*0.05f, 0), s*0.18f, 10);
+            base.noise_amount = 0.15f; base.noise_scale = 4.0f; base.seed_offset = seed + 50;
+            base.scale = vec3(1.5f, 0.4f, 1.5f);
+            base.material.diffuse = vec4(0.4f, 0.38f, 0.35f, 1);
+            base.name = "Base";
+            obj.volumes.push_back(base);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"skull", {"skull", "crane", "tete de mort"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Skull";
+            float s = sz;
+
+            // Cranium (sphere, slightly elongated)
+            auto cranium = make_sphere(vec3(0, s*0.25f, 0), s*0.35f, 20);
+            cranium.noise_amount = 0.06f; cranium.noise_scale = 3.0f; cranium.seed_offset = seed;
+            cranium.scale = vec3(1.0f, 1.1f, 1.0f);
+            cranium.material.diffuse = vec4(0.9f, 0.88f, 0.82f, 1);
+            cranium.name = "Cranium";
+            obj.volumes.push_back(cranium);
+
+            // Eye sockets (spheres, dark)
+            auto eye_l = make_sphere(vec3(-s*0.1f, s*0.3f, s*0.28f), s*0.06f, 10);
+            auto eye_r = make_sphere(vec3(s*0.1f, s*0.3f, s*0.28f), s*0.06f, 10);
+            eye_l.material.diffuse = vec4(0.05f, 0.05f, 0.05f, 1);
+            eye_r.material.diffuse = vec4(0.05f, 0.05f, 0.05f, 1);
+            eye_l.name = "EyeSocketL"; eye_r.name = "EyeSocketR";
+            obj.volumes.push_back(eye_l); obj.volumes.push_back(eye_r);
+
+            // Nose (cone)
+            auto nose = make_cone(vec3(0, s*0.2f, s*0.33f), s*0.03f, s*0.08f, 6);
+            nose.material.diffuse = vec4(0.85f, 0.82f, 0.76f, 1);
+            nose.name = "Nose";
+            obj.volumes.push_back(nose);
+
+            // Jaw (box)
+            auto jaw = make_box(vec3(0, s*0.02f, s*0.05f), vec3(s*0.25f, s*0.08f, s*0.2f));
+            jaw.noise_amount = 0.04f; jaw.seed_offset = seed + 10;
+            jaw.material.diffuse = vec4(0.88f, 0.85f, 0.8f, 1);
+            jaw.name = "Jaw";
+            obj.volumes.push_back(jaw);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"brain", {"brain", "cerveau"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Brain";
+            float s = sz;
+
+            // Left hemisphere
+            auto left = make_sphere(vec3(-s*0.12f, s*0.1f, 0), s*0.28f, 20);
+            left.noise_amount = 0.15f; left.noise_scale = 5.0f; left.seed_offset = seed;
+            left.scale = vec3(1.0f, 0.85f, 1.1f);
+            left.material.diffuse = vec4(0.85f, 0.55f, 0.55f, 1);
+            left.name = "LeftHemi";
+            obj.volumes.push_back(left);
+
+            // Right hemisphere
+            auto right = make_sphere(vec3(s*0.12f, s*0.1f, 0), s*0.28f, 20);
+            right.noise_amount = 0.15f; right.noise_scale = 5.0f; right.seed_offset = seed + 5;
+            right.scale = vec3(1.0f, 0.85f, 1.1f);
+            right.material.diffuse = vec4(0.85f, 0.55f, 0.55f, 1);
+            right.name = "RightHemi";
+            obj.volumes.push_back(right);
+
+            // Brain stem
+            auto stem = make_cylinder(vec3(0, -s*0.1f, -s*0.1f), s*0.06f, s*0.15f, 8);
+            stem.noise_amount = 0.08f; stem.seed_offset = seed + 10;
+            stem.material.diffuse = vec4(0.8f, 0.5f, 0.5f, 1);
+            stem.name = "BrainStem";
+            obj.volumes.push_back(stem);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"flame", {"flame", "flamme", "fire", "feu"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Flame";
+            float s = sz;
+
+            // Core (sphere, emissive)
+            auto core = make_sphere(vec3(0, s*0.2f, 0), s*0.1f, 12);
+            core.noise_amount = 0.2f; core.noise_scale = 4.0f; core.seed_offset = seed;
+            core.material.diffuse = vec4(1.0f, 0.9f, 0.3f, 1);
+            core.material.emission = vec4(1.0f, 0.7f, 0.1f, 1);
+            core.name = "Core";
+            obj.volumes.push_back(core);
+
+            // Outer flame (cone)
+            auto outer = make_cone(vec3(0, s*0.35f, 0), s*0.15f, s*0.6f, 12);
+            outer.noise_amount = 0.25f; outer.noise_scale = 3.0f; outer.seed_offset = seed + 5;
+            outer.material.diffuse = vec4(1.0f, 0.4f, 0.05f, 1);
+            outer.material.emission = vec4(0.8f, 0.3f, 0.0f, 1);
+            outer.material.opacity = 0.85f;
+            outer.name = "OuterFlame";
+            obj.volumes.push_back(outer);
+
+            // Tip (small sphere)
+            auto tip = make_sphere(vec3(0, s*0.55f, 0), s*0.04f, 8);
+            tip.noise_amount = 0.3f; tip.seed_offset = seed + 10;
+            tip.material.diffuse = vec4(1.0f, 0.95f, 0.6f, 1);
+            tip.material.emission = vec4(1.0f, 0.8f, 0.2f, 1);
+            tip.material.opacity = 0.7f;
+            tip.name = "Tip";
+            obj.volumes.push_back(tip);
+
+            return obj;
+        }
+    });
+
+    rules.push_back({"cloud", {"cloud", "nuage"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Cloud";
+            float s = sz;
+
+            // Multiple spheres
+            for (int i = 0; i < 7; i++) {
+                float x = fbm3d((float)i*3.0f+seed, 0, 0, 3) * s * 0.5f;
+                float y = fbm3d(0, (float)i*3.0f+seed, 0, 3) * s * 0.1f + s*0.1f;
+                float z = fbm3d(0, 0, (float)i*3.0f+seed, 3) * s * 0.3f;
+                float r = s * (0.2f + 0.15f * noise2d(seed + (float)i, 0));
+                auto puff = make_sphere(vec3(x, y, z), r, 12);
+                puff.noise_amount = 0.15f; puff.noise_scale = 2.5f;
+                puff.seed_offset = seed + (float)(i+1)*5;
+                puff.material.diffuse = vec4(0.95f, 0.96f, 0.98f, 1);
+                puff.name = "Puff" + std::to_string(i);
+                obj.volumes.push_back(puff);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"mountain", {"mountain", "montagne"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Mountain";
+            float s = sz * 2.0f;
+
+            // Main peak (cone)
+            auto peak = make_cone(vec3(0, s*0.5f, 0), s*0.8f, s*1.0f, 20);
+            peak.noise_amount = 0.12f; peak.noise_scale = 3.0f; peak.seed_offset = seed;
+            peak.material.diffuse = vec4(0.45f, 0.42f, 0.38f, 1);
+            peak.name = "Peak";
+            obj.volumes.push_back(peak);
+
+            // Snow cap (hemisphere)
+            auto snow = make_hemisphere(vec3(0, s*0.9f, 0), s*0.2f, 12);
+            snow.noise_amount = 0.1f; snow.seed_offset = seed + 5;
+            snow.material.diffuse = vec4(0.95f, 0.96f, 0.98f, 1);
+            snow.name = "SnowCap";
+            obj.volumes.push_back(snow);
+
+            // Secondary peak
+            auto sec = make_cone(vec3(s*0.3f, s*0.3f, s*0.2f), s*0.4f, s*0.6f, 14);
+            sec.noise_amount = 0.1f; sec.seed_offset = seed + 10;
+            sec.material.diffuse = vec4(0.48f, 0.44f, 0.4f, 1);
+            sec.name = "SecondaryPeak";
+            obj.volumes.push_back(sec);
+
+            // Base (disc)
+            auto base = make_disc(vec3(0, -s*0.05f, 0), s*1.2f, s*0.1f, 20);
+            base.noise_amount = 0.08f; base.seed_offset = seed + 15;
+            base.material.diffuse = vec4(0.35f, 0.33f, 0.28f, 1);
+            base.name = "Base";
+            obj.volumes.push_back(base);
+
+            return obj;
+        }
+    });
+
+    // Generic rule: builds a parametric shape from the prompt's shape list
+    rules.push_back({"_generic", {},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Object";
+            auto vol = make_box(vec3(0), vec3(sz));
+            vol.noise_amount = 0.05f; vol.seed_offset = seed;
+            vol.material.diffuse = col.w > 0 ? col : vec4(0.6f, 0.6f, 0.65f, 1);
+            vol.name = "Shape";
+            obj.volumes.push_back(vol);
+            return obj;
+        }
+    });
+}
+
+DecomposedObject Decomposer::decompose(const ParsedPrompt& prompt) {
+    std::string lt = to_lower(prompt.original);
+
+    for (auto& rule : rules) {
+        if (rule.keywords.empty()) continue;
+        for (auto& kw : rule.keywords) {
+            if (contains_word(lt, kw)) {
+                return rule.builder(prompt.size, prompt.seed, prompt.color);
             }
         }
     }
-    if (p.material_type == "metallic") {
-        for (auto& part : parts) {
-            part.material.metallic = 0.85f;
-            part.material.roughness = 0.2f;
-            part.material.specular = vec4(0.7f, 0.7f, 0.7f, 1);
-            part.material.shininess = 64.0f;
+
+    // Fallback: if no scene_type matched, try generic shapes
+    if (!prompt.shapes.empty()) {
+        DecomposedObject obj; obj.name = "Custom";
+        for (auto& sh : prompt.shapes) {
+            VolumeDescription vol;
+            if (sh == "cube") {
+                vol = make_box(vec3(0), vec3(prompt.size));
+            } else if (sh == "sphere") {
+                vol = make_sphere(vec3(0), prompt.size * 0.5f, 20);
+            } else if (sh == "cylinder") {
+                vol = make_cylinder(vec3(0), prompt.size * 0.3f, prompt.size, 16);
+            } else if (sh == "cone") {
+                vol = make_cone(vec3(0), prompt.size * 0.3f, prompt.size, 16);
+            } else if (sh == "torus") {
+                vol = make_torus(vec3(0), prompt.size * 0.3f, prompt.size * 0.1f, 20);
+            } else {
+                vol = make_box(vec3(0), vec3(prompt.size));
+            }
+            vol.noise_amount = 0.05f; vol.seed_offset = prompt.seed;
+            if (prompt.color.w > 0) vol.material.diffuse = prompt.color;
+            vol.name = sh;
+            obj.volumes.push_back(vol);
         }
-    } else if (p.material_type == "glass") {
-        for (auto& part : parts) {
-            part.material.metallic = 0.0f;
-            part.material.roughness = 0.05f;
-            part.material.opacity = 0.35f;
-            part.material.specular = vec4(0.9f, 0.9f, 0.9f, 1);
-            part.material.shininess = 128.0f;
-        }
-    } else if (p.material_type == "emissive") {
-        for (auto& part : parts) {
-            part.material.emission = part.material.diffuse * 0.6f;
-            part.material.metallic = 0.0f;
-            part.material.roughness = 0.5f;
-        }
-    } else if (p.material_type == "glossy") {
-        for (auto& part : parts) {
-            part.material.roughness = 0.1f;
-            part.material.specular = vec4(0.6f, 0.6f, 0.6f, 1);
-            part.material.shininess = 96.0f;
-        }
-    } else if (p.material_type == "matte") {
-        for (auto& part : parts) {
-            part.material.roughness = 1.0f;
-            part.material.specular = vec4(0.05f, 0.05f, 0.05f, 1);
-            part.material.shininess = 4.0f;
-            part.material.metallic = 0.0f;
-        }
-    } else if (p.material_type == "wood") {
-        for (auto& part : parts) {
-            part.material.roughness = 0.8f;
-            part.material.metallic = 0.0f;
-            part.material.specular = vec4(0.1f, 0.1f, 0.1f, 1);
-            part.material.shininess = 16.0f;
-            part.material.name = "Wood";
-        }
-    } else if (p.material_type == "stone") {
-        for (auto& part : parts) {
-            part.material.roughness = 0.9f;
-            part.material.metallic = 0.0f;
-            part.material.specular = vec4(0.15f, 0.15f, 0.15f, 1);
-            part.material.shininess = 20.0f;
-            part.material.name = "Stone";
-        }
-    } else if (p.material_type == "plastic") {
-        for (auto& part : parts) {
-            part.material.roughness = 0.3f;
-            part.material.metallic = 0.0f;
-            part.material.specular = vec4(0.4f, 0.4f, 0.4f, 1);
-            part.material.shininess = 48.0f;
-        }
-    } else if (p.material_type == "fabric") {
-        for (auto& part : parts) {
-            part.material.roughness = 1.0f;
-            part.material.metallic = 0.0f;
-            part.material.specular = vec4(0.05f, 0.05f, 0.05f, 1);
-            part.material.shininess = 8.0f;
-            part.material.name = "Fabric";
-        }
+        return obj;
     }
-    if (p.style == "dark") {
-        for (auto& part : parts) {
-            part.material.diffuse *= 0.4f;
-            part.material.specular *= 0.5f;
-        }
-    } else if (p.style == "bright") {
-        for (auto& part : parts) {
-            part.material.emission = part.material.diffuse * 0.3f;
-        }
-    } else if (p.style == "fantasy") {
-        for (auto& part : parts) {
-            part.material.emission = part.material.diffuse * 0.15f;
-        }
-    } else if (p.style == "ancient") {
-        for (auto& part : parts) {
-            part.material.roughness = std::min(1.0f, part.material.roughness + 0.15f);
-            part.material.diffuse *= vec4(0.85f, 0.8f, 0.7f, 1.0f);
-        }
-    }
+
+    // Absolute fallback
+    return rules.back().builder(prompt.size, prompt.seed, prompt.color);
+}
+
+std::string Decomposer::get_description(const DecomposedObject& obj) {
+    return "Procedurally modeled " + obj.name + " from " +
+           std::to_string(obj.volumes.size()) + " parametric volumes with noise deformation";
 }
 
 // ============================================================
-// OBJECTGENERATOR CLASS
+// OBJECT GENERATOR
 // ============================================================
 
 ObjectGenerator::ObjectGenerator() {}
 
-std::string ObjectGenerator::get_last_description() const {
-    return last_description;
-}
-
-Material ObjectGenerator::create_material(const vec4& color, const std::string& type) {
-    Material m;
-    m.diffuse = color;
-    m.specular = vec4(0.3f, 0.3f, 0.3f, 1);
-    m.shininess = 32.0f;
-    m.name = type;
-    if (type == "Metal") {
-        m.specular = vec4(0.7f, 0.7f, 0.7f, 1); m.shininess = 64.0f;
-        m.metallic = 0.85f; m.roughness = 0.2f;
-    }
-    else if (type == "Glass") {
-        m.specular = vec4(0.9f, 0.9f, 0.9f, 1); m.shininess = 128.0f;
-        m.metallic = 0.0f; m.roughness = 0.05f; m.opacity = 0.3f;
-    }
-    else if (type == "Wood") {
-        m.specular = vec4(0.1f, 0.1f, 0.1f, 1); m.shininess = 16.0f;
-        m.metallic = 0.0f; m.roughness = 0.8f;
-    }
-    else if (type == "Stone") {
-        m.specular = vec4(0.15f, 0.15f, 0.15f, 1); m.shininess = 20.0f;
-        m.metallic = 0.0f; m.roughness = 0.9f;
-    }
-    else if (type == "Fabric") {
-        m.specular = vec4(0.05f, 0.05f, 0.05f, 1); m.shininess = 8.0f;
-        m.metallic = 0.0f; m.roughness = 1.0f;
-    }
-    else if (type == "Flesh") {
-        m.specular = vec4(0.2f, 0.2f, 0.2f, 1); m.shininess = 24.0f;
-        m.metallic = 0.0f; m.roughness = 0.7f;
-    }
-    else if (type == "Gold") {
-        m.specular = vec4(0.9f, 0.8f, 0.3f, 1); m.shininess = 96.0f;
-        m.metallic = 0.95f; m.roughness = 0.1f;
-    }
-    else if (type == "Fire") {
-        m.specular = vec4(1.0f, 0.8f, 0.2f, 1); m.shininess = 1.0f;
-        m.emission = color * 0.5f; m.metallic = 0.0f; m.roughness = 0.5f;
-    }
-    else if (type == "Water") {
-        m.specular = vec4(0.5f, 0.5f, 0.5f, 1); m.shininess = 80.0f;
-        m.metallic = 0.0f; m.roughness = 0.1f; m.opacity = 0.7f;
-    }
-    else if (type == "Energy") {
-        m.specular = vec4(0.8f, 0.8f, 1.0f, 1); m.shininess = 200.0f;
-        m.emission = color * 0.8f; m.metallic = 0.0f; m.roughness = 0.3f;
-    }
-    else if (type == "Bark" || type == "Leaves") {
-        m.specular = vec4(0.08f, 0.08f, 0.08f, 1); m.shininess = 12.0f;
-        m.metallic = 0.0f; m.roughness = 0.85f;
-    }
-    else if (type == "Roof") {
-        m.specular = vec4(0.12f, 0.12f, 0.12f, 1); m.shininess = 18.0f;
-        m.metallic = 0.0f; m.roughness = 0.85f;
-    }
-    else if (type == "Wall") {
-        m.specular = vec4(0.1f, 0.1f, 0.1f, 1); m.shininess = 14.0f;
-        m.metallic = 0.0f; m.roughness = 0.75f;
-    }
-    else if (type == "Rubber") {
-        m.specular = vec4(0.05f, 0.05f, 0.05f, 1); m.shininess = 8.0f;
-        m.metallic = 0.0f; m.roughness = 0.95f;
-    }
-    else if (type == "Crystal" || type == "Ice") {
-        m.specular = vec4(0.7f, 0.7f, 0.8f, 1); m.shininess = 128.0f;
-        m.metallic = 0.0f; m.roughness = 0.05f; m.opacity = 0.6f;
-    }
-    return m;
-}
-
-void ObjectGenerator::add_parts_to_scene(Scene* scene, const std::vector<ProceduralEngine::Part>& parts) {
-    for (const auto& p : parts) {
-        auto node = std::make_unique<SceneNode>();
-        node->name = p.name;
-        node->mesh = std::make_unique<Mesh>(p.mesh);
-        node->material = std::make_unique<Material>(p.material);
-        node->position = p.position;
-        node->rotation = p.rotation;
-        node->scale = p.scale;
-        scene->root.add_child(std::move(node));
-    }
-}
-
-void ObjectGenerator::apply_arrangement(std::vector<SceneNode*>& nodes, const ParsedPrompt& p, Scene* scene) {
-    if (p.arrangement == "circle" && nodes.size() > 1) {
-        float radius = 1.5f * p.size;
-        for (size_t i = 0; i < nodes.size(); i++) {
-            float a = (float)i / (float)nodes.size() * (float)M_PI * 2;
-            vec3 pos = nodes[i]->position;
-            pos.x += cosf(a) * radius;
-            pos.z += sinf(a) * radius;
-            nodes[i]->position = pos;
-        }
-    } else if (p.arrangement == "grid" && nodes.size() > 1) {
-        int cols = (int)ceilf(sqrtf((float)nodes.size()));
-        float spacing = 1.2f * p.size;
-        for (size_t i = 0; i < nodes.size(); i++) {
-            int row = (int)i / cols;
-            int col = (int)i % cols;
-            vec3 pos = nodes[i]->position;
-            pos.x += (col - cols / 2) * spacing;
-            pos.z += (row - (int)nodes.size() / cols / 2) * spacing;
-            nodes[i]->position = pos;
-        }
-    } else if (p.arrangement == "line" && nodes.size() > 1) {
-        float spacing = 1.5f * p.size;
-        for (size_t i = 0; i < nodes.size(); i++) {
-            vec3 pos = nodes[i]->position;
-            pos.x += ((float)i - (float)nodes.size() / 2.0f) * spacing;
-            nodes[i]->position = pos;
-        }
-    }
-}
-
 Scene* ObjectGenerator::generate_from_prompt(const std::string& prompt, Scene* scene) {
     if (!scene) scene = new Scene();
+
     ParsedPrompt pp = prompt_engine.parse(prompt);
     last_description = prompt_engine.get_description(pp);
 
-    proc_engine.rng() = std::mt19937(pp.seed);
+    rng_engine = std::mt19937(pp.seed);
+    builder.set_rng(&rng_engine);
 
-    std::vector<ProceduralEngine::Part> all_parts;
+    DecomposedObject decomposed = decomposer.decompose(pp);
+    last_description = decomposer.get_description(decomposed);
 
-    if (pp.scene_type == "tree") all_parts = proc_engine.generate_tree(pp.size * 3.0f);
-    else if (pp.scene_type == "house") all_parts = proc_engine.generate_house(pp.size);
-    else if (pp.scene_type == "car") all_parts = proc_engine.generate_car(pp.size);
-    else if (pp.scene_type == "robot") all_parts = proc_engine.generate_robot(pp.size);
-    else if (pp.scene_type == "castle") all_parts = proc_engine.generate_castle(pp.size);
-    else if (pp.scene_type == "spaceship") all_parts = proc_engine.generate_spaceship(pp.size);
-    else if (pp.scene_type == "sword") all_parts = proc_engine.generate_sword(pp.size);
-    else if (pp.scene_type == "chair") all_parts = proc_engine.generate_chair(pp.size);
-    else if (pp.scene_type == "table") all_parts = proc_engine.generate_table(pp.size);
-    else if (pp.scene_type == "star") all_parts = proc_engine.generate_star(pp.size);
-    else if (pp.scene_type == "heart") all_parts = proc_engine.generate_heart(pp.size);
-    else if (pp.scene_type == "mountain") all_parts = proc_engine.generate_mountain(pp.size * 2.0f);
-    else if (pp.scene_type == "snowman") all_parts = proc_engine.generate_snowman(pp.size);
-    else if (pp.scene_type == "diamond") all_parts = proc_engine.generate_diamond(pp.size);
-    else if (pp.scene_type == "spiral") all_parts = proc_engine.generate_spiral(pp.size);
-    else if (pp.scene_type == "dna") all_parts = proc_engine.generate_dna(pp.size);
-    else if (pp.scene_type == "skull") all_parts = proc_engine.generate_skull(pp.size);
-    else if (pp.scene_type == "airplane") all_parts = proc_engine.generate_airplane(pp.size);
-    else if (pp.scene_type == "boat") all_parts = proc_engine.generate_boat(pp.size);
-    else if (pp.scene_type == "door") all_parts = proc_engine.generate_door(pp.size);
-    else if (pp.scene_type == "window") all_parts = proc_engine.generate_window(pp.size);
-    else if (pp.scene_type == "shelf") all_parts = proc_engine.generate_shelf(pp.size);
-    else if (pp.scene_type == "lamp") all_parts = proc_engine.generate_lamp(pp.size);
-    else if (pp.scene_type == "brain") all_parts = proc_engine.generate_brain(pp.size);
-    else if (pp.scene_type == "flower") all_parts = proc_engine.generate_flower(pp.size);
-    else if (pp.scene_type == "bone") all_parts = proc_engine.generate_bone(pp.size);
-    else if (pp.scene_type == "key") all_parts = proc_engine.generate_key(pp.size);
-    else if (pp.scene_type == "helmet") all_parts = proc_engine.generate_helmet(pp.size);
-    else if (pp.scene_type == "battery") all_parts = proc_engine.generate_battery(pp.size);
-    else if (pp.scene_type == "ice_crystal") all_parts = proc_engine.generate_ice_crystal(pp.size);
-    else if (pp.scene_type == "mushroom") all_parts = proc_engine.generate_mushroom(pp.size);
-    else if (pp.scene_type == "pyramid") all_parts = proc_engine.generate_pyramid(pp.size);
-    else if (pp.scene_type == "donut") all_parts = proc_engine.generate_donut(pp.size);
-    else if (pp.scene_type == "satellite") all_parts = proc_engine.generate_satellite(pp.size);
-    else if (pp.scene_type == "jewelry") all_parts = proc_engine.generate_jewelry(pp.size);
-    else if (pp.scene_type == "throne") all_parts = proc_engine.generate_throne(pp.size);
-    else if (pp.scene_type == "altar") all_parts = proc_engine.generate_altar(pp.size);
-    else if (pp.scene_type == "campfire") all_parts = proc_engine.generate_campfire(pp.size);
-    else if (pp.scene_type == "crate") all_parts = proc_engine.generate_crate(pp.size);
-    else if (pp.scene_type == "barrel") all_parts = proc_engine.generate_barrel(pp.size);
-    else if (pp.scene_type == "bench") all_parts = proc_engine.generate_bench(pp.size);
-    else if (pp.scene_type == "fountain") all_parts = proc_engine.generate_fountain(pp.size);
-    else if (pp.scene_type == "cart") all_parts = proc_engine.generate_cart(pp.size);
-    else if (pp.scene_type == "lantern") all_parts = proc_engine.generate_lantern(pp.size);
-    else if (pp.scene_type == "gun") all_parts = proc_engine.generate_gun(pp.size);
-    else if (pp.scene_type == "pistol") all_parts = proc_engine.generate_gun(pp.size);
-    else if (pp.scene_type == "turret") all_parts = proc_engine.generate_scifi_turret(pp.size);
-    else if (pp.scene_type == "crystal") all_parts = proc_engine.generate_crystal(pp.size);
-    else if (pp.scene_type == "coral") all_parts = proc_engine.generate_coral(pp.size);
-    else if (pp.scene_type == "butterfly") all_parts = proc_engine.generate_butterfly(pp.size);
-    else if (pp.scene_type == "cat") all_parts = proc_engine.generate_cat(pp.size);
-    else if (pp.scene_type == "dog") all_parts = proc_engine.generate_dog(pp.size);
-    else if (pp.scene_type == "bird") all_parts = proc_engine.generate_bird(pp.size);
-    else if (pp.scene_type == "stump") all_parts = proc_engine.generate_tree_stump(pp.size);
-    else if (pp.scene_type == "wall") all_parts = proc_engine.generate_rock_wall(pp.size);
-    else if (pp.scene_type == "grave") all_parts = proc_engine.generate_grave(pp.size);
-    else if (pp.scene_type == "flag") all_parts = proc_engine.generate_flag(pp.size);
-    else if (pp.scene_type == "bookshelf") all_parts = proc_engine.generate_bookshelf(pp.size);
-    else if (pp.scene_type == "potion") all_parts = proc_engine.generate_potion(pp.size);
-    else if (pp.scene_type == "cave") all_parts = proc_engine.generate_cave(pp.size);
-    else if (pp.scene_type == "tent") all_parts = proc_engine.generate_tent(pp.size);
-    else {
-        all_parts = proc_engine.generate_tree(pp.size * 3.0f);
+    Mesh result = builder.build(decomposed);
+
+    // Apply modifiers
+    for (auto& mod : pp.modifiers) {
+        if (mod == "subdivide") result.subdivide();
+        else if (mod == "smooth") result.smooth_vertices(0.5f, 2);
+        else if (mod == "mirror") result.mirror(0);
     }
 
-    proc_engine.apply_prompt_material(all_parts, pp);
+    // Determine primary material from first volume
+    Material primary_mat;
+    if (!decomposed.volumes.empty() && decomposed.volumes[0].material.diffuse.w > 0) {
+        primary_mat = decomposed.volumes[0].material;
+    }
+    if (pp.color.w > 0) primary_mat.diffuse = pp.color;
 
-    add_parts_to_scene(scene, all_parts);
+    add_mesh_to_scene(scene, result, decomposed.name, primary_mat);
+
     return scene;
 }
+
+void ObjectGenerator::add_mesh_to_scene(Scene* scene, const Mesh& mesh,
+                                        const std::string& name, const Material& mat) {
+    auto node = std::make_unique<SceneNode>();
+    node->name = name;
+    node->mesh = std::make_unique<Mesh>(mesh);
+    node->material = std::make_unique<Material>(mat);
+    scene->root.add_child(std::move(node));
+}
+
+std::string ObjectGenerator::get_last_description() const { return last_description; }
 
 } // namespace ocp

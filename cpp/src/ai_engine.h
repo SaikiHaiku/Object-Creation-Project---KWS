@@ -1,11 +1,16 @@
 #pragma once
 #include "scene.h"
+#include "mesh.h"
 #include <string>
 #include <vector>
 #include <map>
 #include <random>
 
 namespace ocp {
+
+// ============================================================
+// PROMPT PARSING
+// ============================================================
 
 struct ParsedPrompt {
     std::string original;
@@ -27,141 +32,138 @@ public:
     std::string get_description(const ParsedPrompt& p);
 };
 
-class ProceduralEngine {
+// ============================================================
+// VOLUME-BASED DECOMPOSITION (replaces hardcoded generators)
+// ============================================================
+
+enum class VolumeType {
+    Sphere, Box, Cylinder, Cone, Torus, Capsule,
+    Hemisphere, Loft, Ring, Wedge, Disc, Plane,
+    Arrow, TorusKnot, Custom
+};
+
+struct VolumeDescription {
+    VolumeType type = VolumeType::Box;
+    vec3 position = vec3(0);
+    vec3 rotation = vec3(0);
+    vec3 scale = vec3(1);
+    float seed_offset = 0.0f;
+    float noise_amount = 0.05f;
+    float noise_scale = 3.0f;
+    int segments = 24;
+    int rings = 16;
+
+    union {
+        struct { float radius; } sphere;
+        struct { float radius; float height; } cylinder;
+        struct { float radius; float height; } cone;
+        struct { float major_r; float minor_r; } torus;
+        struct { float radius; float height; } capsule;
+        struct { float radius; float half_angle; } hemisphere;
+        struct { float inner_r; float outer_r; } ring;
+        struct { float radius; float height; float angle; } wedge;
+        struct { float radius; float thickness; } disc;
+    } params = {};
+
+    Material material;
+    std::string name;
+};
+
+struct DecomposedObject {
+    std::string name;
+    std::string description;
+    std::vector<VolumeDescription> volumes;
+};
+
+// ============================================================
+// PARAMETRIC MESH BUILDER (vertex-by-vertex, no pre-made parts)
+// ============================================================
+
+class ParametricBuilder {
 public:
-    struct Part {
-        std::string name;
-        Mesh mesh;
-        Material material;
-        vec3 position = vec3(0);
-        vec3 rotation = vec3(0);
-        vec3 scale = vec3(1);
-    };
+    ParametricBuilder();
 
-    std::mt19937& rng();
-    float randf();
-    void apply_prompt_material(std::vector<Part>& parts, const ParsedPrompt& p);
+    Mesh build(const DecomposedObject& obj);
 
-    // === ORIGINAL SCENE GENERATORS (ORGANIC REWRITE) ===
-    std::vector<Part> generate_tree(float height = 3.0f);
-    std::vector<Part> generate_house(float size = 1.0f);
-    std::vector<Part> generate_car(float size = 1.0f);
-    std::vector<Part> generate_robot(float size = 1.0f);
-    std::vector<Part> generate_castle(float size = 1.0f);
-    std::vector<Part> generate_spaceship(float size = 1.0f);
-    std::vector<Part> generate_sword(float size = 1.0f);
-    std::vector<Part> generate_chair(float size = 1.0f);
-    std::vector<Part> generate_table(float size = 1.0f);
-    std::vector<Part> generate_star(float size = 1.0f);
-    std::vector<Part> generate_heart(float size = 1.0f);
-    std::vector<Part> generate_mountain(float size = 1.0f);
-    std::vector<Part> generate_snowman(float size = 1.0f);
-    std::vector<Part> generate_diamond(float size = 1.0f);
-    std::vector<Part> generate_spiral(float size = 1.0f);
-    std::vector<Part> generate_dna(float size = 1.0f);
-    std::vector<Part> generate_skull(float size = 1.0f);
-    std::vector<Part> generate_airplane(float size = 1.0f);
-    std::vector<Part> generate_boat(float size = 1.0f);
-    std::vector<Part> generate_door(float size = 1.0f);
-    std::vector<Part> generate_window(float size = 1.0f);
-    std::vector<Part> generate_shelf(float size = 1.0f);
-    std::vector<Part> generate_lamp(float size = 1.0f);
-    std::vector<Part> generate_brain(float size = 1.0f);
-    std::vector<Part> generate_flower(float size = 1.0f);
-    std::vector<Part> generate_bone(float size = 1.0f);
-    std::vector<Part> generate_key(float size = 1.0f);
-    std::vector<Part> generate_helmet(float size = 1.0f);
-    std::vector<Part> generate_battery(float size = 1.0f);
-    std::vector<Part> generate_ice_crystal(float size = 1.0f);
-    std::vector<Part> generate_mushroom(float size = 1.0f);
-    std::vector<Part> generate_pyramid(float size = 1.0f);
-    std::vector<Part> generate_donut(float size = 1.0f);
-    std::vector<Part> generate_satellite(float size = 1.0f);
-    std::vector<Part> generate_jewelry(float size = 1.0f);
-
-    // === NEW SCENE GENERATORS ===
-    std::vector<Part> generate_throne(float size = 1.0f);
-    std::vector<Part> generate_altar(float size = 1.0f);
-    std::vector<Part> generate_campfire(float size = 1.0f);
-    std::vector<Part> generate_crate(float size = 1.0f);
-    std::vector<Part> generate_barrel(float size = 1.0f);
-    std::vector<Part> generate_bench(float size = 1.0f);
-    std::vector<Part> generate_fountain(float size = 1.0f);
-    std::vector<Part> generate_cart(float size = 1.0f);
-    std::vector<Part> generate_lantern(float size = 1.0f);
-    std::vector<Part> generate_gun(float size = 1.0f);
-    std::vector<Part> generate_scifi_turret(float size = 1.0f);
-    std::vector<Part> generate_crystal(float size = 1.0f);
-    std::vector<Part> generate_coral(float size = 1.0f);
-    std::vector<Part> generate_butterfly(float size = 1.0f);
-    std::vector<Part> generate_cat(float size = 1.0f);
-    std::vector<Part> generate_dog(float size = 1.0f);
-    std::vector<Part> generate_bird(float size = 1.0f);
-    std::vector<Part> generate_tree_stump(float size = 1.0f);
-    std::vector<Part> generate_rock_wall(float size = 1.0f);
-    std::vector<Part> generate_grave(float size = 1.0f);
-    std::vector<Part> generate_flag(float size = 1.0f);
-    std::vector<Part> generate_bookshelf(float size = 1.0f);
-    std::vector<Part> generate_potion(float size = 1.0f);
-    std::vector<Part> generate_cave(float size = 1.0f);
-    std::vector<Part> generate_tent(float size = 1.0f);
+    void set_rng(std::mt19937* r) { rng_engine = r; }
 
 private:
-    std::mt19937 rng_engine{42};
+    std::mt19937* rng_engine = nullptr;
 
-    // --- Deformation Utilities ---
-    void deform_organic(Mesh& m, float amount, float seed);
-    void bend_mesh(Mesh& m, float amount, vec3 axis);
-    void taper_mesh(Mesh& m, float top_scale, float bottom_scale);
-    void add_random_detail(Mesh& m, float detail_size, int count);
-    void apply_vertex_color_noise(Mesh& m, vec4 base_color, float variation, float seed);
+    // Volume mesh builders (parametric surfaces with noise)
+    Mesh build_sphere(const VolumeDescription& vol);
+    Mesh build_box(const VolumeDescription& vol);
+    Mesh build_cylinder(const VolumeDescription& vol);
+    Mesh build_cone(const VolumeDescription& vol);
+    Mesh build_torus(const VolumeDescription& vol);
+    Mesh build_capsule(const VolumeDescription& vol);
+    Mesh build_hemisphere(const VolumeDescription& vol);
+    Mesh build_ring(const VolumeDescription& vol);
+    Mesh build_wedge(const VolumeDescription& vol);
+    Mesh build_disc(const VolumeDescription& vol);
 
-    // --- Organic Mesh Creators ---
-    Mesh create_organic_sphere(float radius, int seg, int rings, float seed, float bumpiness);
-    Mesh create_organic_cylinder(float r, float h, int seg, float seed, float bulge);
-    Mesh create_stone(float size, float seed = 0.0f);
-    Mesh create_log(float radius, float length, float seed = 0.0f);
-    Mesh create_leaf_cluster(float size, float seed = 0.0f);
-    Mesh create_rock(float size, float seed = 0.0f);
-    Mesh create_cloud(float size, float seed = 0.0f);
-    Mesh create_cave_entrance(float size, float seed = 0.0f);
-    Mesh create_tent_mesh(float size, float seed = 0.0f);
-    Mesh create_barrel_mesh(float size, float seed = 0.0f);
-    Mesh create_bench_mesh(float size, float seed = 0.0f);
-    Mesh create_fountain_mesh(float size, float seed = 0.0f);
-    Mesh create_cart_mesh(float size, float seed = 0.0f);
-    Mesh create_crate_mesh(float size, float seed = 0.0f);
-    Mesh create_lantern_mesh(float size, float seed = 0.0f);
-    Mesh create_gun_mesh(float size, float seed = 0.0f);
-    Mesh create_scifi_turret_mesh(float size, float seed = 0.0f);
-    Mesh create_crystal_mesh(float size, float seed = 0.0f);
-    Mesh create_coral_mesh(float size, float seed = 0.0f);
-    Mesh create_butterfly_mesh(float size, float seed = 0.0f);
-    Mesh create_cat_mesh(float size, float seed = 0.0f);
-    Mesh create_dog_mesh(float size, float seed = 0.0f);
-    Mesh create_bird_mesh(float size, float seed = 0.0f);
-    Mesh create_tree_stump_mesh(float size, float seed = 0.0f);
-    Mesh create_rock_wall_mesh(float size, float seed = 0.0f);
-    Mesh create_grave_mesh(float size, float seed = 0.0f);
-    Mesh create_flag_mesh(float size, float seed = 0.0f);
-    Mesh create_bookshelf_mesh(float size, float seed = 0.0f);
-    Mesh create_potion_mesh(float size, float seed = 0.0f);
-    Mesh create_campfire_mesh(float size, float seed = 0.0f);
-    Mesh create_throne_mesh(float size, float seed = 0.0f);
-    Mesh create_altar_mesh(float size, float seed = 0.0f);
+    // Loft: interpolates cross-sections along a path
+    struct CrossSection {
+        vec3 center;
+        std::vector<vec3> profile;
+    };
+    Mesh build_loft(const VolumeDescription& vol,
+                    const std::vector<CrossSection>& path);
 
-    // --- Internal Mesh Helpers ---
-    Mesh create_tapered_cylinder(float r_top, float r_bot, float height, int seg = 16);
-    Mesh create_pyramid_mesh(float base_size, float height, int sides = 4);
-    Mesh create_star_mesh(float size);
-    Mesh create_heart_mesh(float size);
-    Mesh create_skull_mesh(float size);
-    Mesh create_brain_mesh(float size);
-    Mesh create_l_shape(float leg1, float leg2, float thickness);
-    Mesh create_ring(float outer_r, float inner_r, int segs);
-    void merge_mesh(Mesh& target, const Mesh& source, const vec3& offset);
-    void merge_mesh_transform(Mesh& target, const Mesh& source, const mat4& transform);
+    // Transform a volume mesh by position/rotation/scale
+    void transform_mesh(Mesh& m, const VolumeDescription& vol);
+
+    // Noise helper
+    float vol_noise(float x, float y, float z, float seed);
+
+    // Ring builder (parametric circle)
+    Mesh build_ring_primitive(float inner_r, float outer_r, int segments);
+
+    // Disc builder
+    Mesh build_disc_primitive(float radius, float thickness, int segments);
 };
+
+// ============================================================
+// DECOMPOSER (prompt text → volume decomposition rules)
+// ============================================================
+
+class Decomposer {
+public:
+    Decomposer();
+
+    DecomposedObject decompose(const ParsedPrompt& prompt);
+    std::string get_description(const DecomposedObject& obj);
+
+private:
+    struct DecompositionRule {
+        std::string object_type;
+        std::vector<std::string> keywords;
+        std::function<DecomposedObject(float size, uint32_t seed, const vec4& color)> builder;
+    };
+
+    std::vector<DecompositionRule> rules;
+
+    void init_rules();
+
+    // Shared mesh-building helpers for rules
+    static VolumeDescription make_sphere(vec3 pos, float r, int seg = 24);
+    static VolumeDescription make_box(vec3 pos, vec3 scale);
+    static VolumeDescription make_cylinder(vec3 pos, float r, float h, int seg = 24);
+    static VolumeDescription make_cone(vec3 pos, float r, float h, int seg = 24);
+    static VolumeDescription make_torus(vec3 pos, float major_r, float minor_r, int seg = 24);
+    static VolumeDescription make_capsule(vec3 pos, float r, float h, int seg = 24);
+    static VolumeDescription make_hemisphere(vec3 pos, float r, int seg = 24);
+    static VolumeDescription make_ring(vec3 pos, float inner_r, float outer_r, int seg = 24);
+    static VolumeDescription make_disc(vec3 pos, float r, float thickness, int seg = 24);
+    static VolumeDescription make_wedge(vec3 pos, float r, float h, float angle, int seg = 24);
+
+    // Fallback: build a generic shape from the prompt shapes
+    DecomposedObject build_generic(const ParsedPrompt& p);
+};
+
+// ============================================================
+// OBJECT GENERATOR (orchestrates everything)
+// ============================================================
 
 class ObjectGenerator {
 public:
@@ -171,12 +173,13 @@ public:
 
 private:
     PromptEngine prompt_engine;
-    ProceduralEngine proc_engine;
+    Decomposer decomposer;
+    ParametricBuilder builder;
+    std::mt19937 rng_engine{42};
     std::string last_description;
 
-    void add_parts_to_scene(Scene* scene, const std::vector<ProceduralEngine::Part>& parts);
-    Material create_material(const vec4& color, const std::string& type);
-    void apply_arrangement(std::vector<SceneNode*>& nodes, const ParsedPrompt& p, Scene* scene);
+    void add_mesh_to_scene(Scene* scene, const Mesh& mesh,
+                          const std::string& name, const Material& mat);
 };
 
 } // namespace ocp
