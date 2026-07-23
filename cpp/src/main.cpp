@@ -20,9 +20,9 @@
 #include <cstdio>
 #include <string>
 #include <vector>
-#include <filesystem>
-#include <stack>
+#include <map>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -56,7 +56,8 @@ static float snap_value = 0.0f;
 static std::deque<std::string> console_log;
 static const int MAX_LOG = 200;
 
-static bool mouse_orbiting = false, mouse_panning = false;
+static bool mouse_orbiting = false, mouse_panning = false, mouse_zooming = false;
+static bool alt_held_for_orbit = false;
 static double last_mx = 0, last_my = 0;
 static bool viewport_hovered = false;
 
@@ -67,6 +68,20 @@ struct UndoState {
 static std::vector<UndoState> undo_stack;
 static std::vector<UndoState> redo_stack;
 static const int MAX_UNDO = 50;
+
+static std::map<SceneNode*, std::vector<Modifier>> modifier_stacks;
+
+static bool local_space_mode = true;
+
+static std::deque<std::string> ai_prompt_history;
+static const int MAX_AI_HISTORY = 20;
+
+static double last_frame_time = 0.0;
+static float current_fps = 0.0;
+static float fps_update_timer = 0.0;
+static int frame_counter = 0;
+
+static int tree_force_state = 0;
 
 static std::string to_lower(const std::string& s) {
     std::string r = s;
@@ -137,6 +152,11 @@ static std::string open_file_dialog(const char* filter) {
     if (GetOpenFileNameA(&ofn)) return std::string(filename);
     return "";
 }
+
+static const char* OCP_FILTER = "OCP Scene\0*.ocp\0All\0*.*\0";
+static const char* OBJ_FILTER = "OBJ Files\0*.obj\0All\0*.*\0";
+static const char* STL_FILTER = "STL Files\0*.stl\0All\0*.*\0";
+static const char* PNG_FILTER = "PNG Files\0*.png\0All\0*.*\0";
 
 static void add_primitive(const std::string& name) {
     save_undo("Add " + name);
@@ -220,38 +240,118 @@ static void setup_default_scene() {
         scene.add_node(std::move(node));
     }
 
+    modifier_stacks.clear();
     status_text = "Default scene loaded";
     log_message("Default scene loaded");
 }
 
-static void setup_key_callbacks(GLFWwindow* window);
+static void add_modifier_to_selected(Modifier::Type type) {
+    SceneNode* node = scene.selected_node;
+    if (!node) return;
+    save_undo("Add " + std::string(Modifier::type_name(type)));
+    Modifier mod;
+    mod.type = type;
+    mod.name = Modifier::type_name(type);
+    modifier_stacks[node].push_back(mod);
+    log_message("Added modifier: " + std::string(Modifier::type_name(type)));
+    status_text = "Added " + std::string(Modifier::type_name(type));
+}
+
+static void apply_modifier_to_node(SceneNode* node, int index) {
+    if (!node || !node->mesh) return;
+    auto it = modifier_stacks.find(node);
+    if (it == modifier_stacks.end() || index < 0 || index >= (int)it->second.size()) return;
+    Modifier& mod = it->second[index];
+    if (!mod.enabled) return;
+
+    save_undo("Apply " + mod.name);
+
+    switch (mod.type) {
+        case Modifier::SUBDIVISION:
+            for (int i = 0; i < mod.subdiv_levels; i++)
+                node->mesh->subdivide_catmull_clark();
+            break;
+        case Modifier::SMOOTH:
+            node->mesh->smooth_vertices(mod.smooth_factor, mod.smooth_iterations);
+            break;
+        case Modifier::MIRROR: {
+            int axis = mod.mirror_x ? 0 : (mod.mirror_y ? 1 : 2);
+            node->mesh->mirror(axis);
+            break;
+        }
+        case Modifier::SOLIDIFY:
+            node->mesh->make_solid(mod.solidify_thickness);
+            break;
+        case Modifier::ARRAY:
+        case Modifier::DECIMATE:
+        case Modifier::LATTICE:
+            log_message("Modifier apply not yet fully implemented: " + mod.name);
+            break;
+    }
+
+    node->mesh->dirty = true;
+    renderer.invalidate_mesh(node->mesh.get());
+    it->second.erase(it->second.begin() + index);
+    log_message("Applied modifier: " + mod.name);
+}
+
+static void remove_modifier_from_node(SceneNode* node, int index) {
+    auto it = modifier_stacks.find(node);
+    if (it == modifier_stacks.end() || index < 0 || index >= (int)it->second.size()) return;
+    save_undo("Remove " + it->second[index].name);
+    it->second.erase(it->second.begin() + index);
+    log_message("Removed modifier");
+}
 
 static void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (action == GLFW_PRESS) {
-        if (button == GLFW_MOUSE_BUTTON_MIDDLE) mouse_orbiting = true;
-        else if (button == GLFW_MOUSE_BUTTON_RIGHT) mouse_panning = true;
-        else if (button == GLFW_MOUSE_BUTTON_LEFT && viewport_hovered) {
-            double mx, my; glfwGetCursorPos(w, &mx, &my);
-            float vx = (float)mx, vy = (float)my;
-            vec3 origin, dir;
-            camera.screen_to_ray(vx, vy, (float)WIN_W, (float)WIN_H, origin, dir);
-            SceneNode* hit; float dist;
-            if (scene.raycast(origin, dir, hit, dist)) {
-                if (mods & GLFW_MOD_CONTROL) {
-                    scene.toggle_multi_select(hit);
-                    status_text = "Multi-select: " + hit->name + " (" + std::to_string(scene.multi_selection.size()) + " selected)";
-                } else {
-                    scene.select(hit);
-                    status_text = "Selected: " + hit->name;
-                }
-                strncpy(rename_buf, hit->name.c_str(), sizeof(rename_buf));
-                log_message("Selected: " + hit->name);
+        if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
+            if (mods & GLFW_MOD_CONTROL) {
+                mouse_zooming = true;
+            } else if (mods & GLFW_MOD_SHIFT) {
+                mouse_panning = true;
+            } else {
+                mouse_orbiting = true;
             }
-            else scene.deselect();
+        } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+            mouse_panning = true;
+        } else if (button == GLFW_MOUSE_BUTTON_LEFT) {
+            if (mods & GLFW_MOD_ALT) {
+                mouse_orbiting = true;
+                alt_held_for_orbit = true;
+            } else if (viewport_hovered) {
+                double mx, my; glfwGetCursorPos(w, &mx, &my);
+                float vx = (float)mx, vy = (float)my;
+                vec3 origin, dir;
+                camera.screen_to_ray(vx, vy, (float)WIN_W, (float)WIN_H, origin, dir);
+                SceneNode* hit; float dist;
+                if (scene.raycast(origin, dir, hit, dist)) {
+                    if (mods & GLFW_MOD_CONTROL) {
+                        scene.toggle_multi_select(hit);
+                        status_text = "Multi-select: " + hit->name + " (" + std::to_string(scene.multi_selection.size()) + " selected)";
+                    } else {
+                        scene.select(hit);
+                        status_text = "Selected: " + hit->name;
+                    }
+                    strncpy(rename_buf, hit->name.c_str(), sizeof(rename_buf));
+                    log_message("Selected: " + hit->name);
+                }
+                else scene.deselect();
+            }
         }
     } else {
-        if (button == GLFW_MOUSE_BUTTON_MIDDLE) mouse_orbiting = false;
-        else if (button == GLFW_MOUSE_BUTTON_RIGHT) mouse_panning = false;
+        if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
+            mouse_orbiting = false;
+            mouse_panning = false;
+            mouse_zooming = false;
+        } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+            mouse_panning = false;
+        } else if (button == GLFW_MOUSE_BUTTON_LEFT) {
+            if (alt_held_for_orbit) {
+                mouse_orbiting = false;
+                alt_held_for_orbit = false;
+            }
+        }
     }
 }
 
@@ -259,6 +359,7 @@ static void cursor_position_callback(GLFWwindow*, double mx, double my) {
     float dx = (float)(mx - last_mx), dy = (float)(my - last_my);
     if (mouse_orbiting) camera.orbit(dx * 0.5f, dy * 0.5f);
     else if (mouse_panning) camera.pan(dx, dy);
+    else if (mouse_zooming) camera.zoom(-dy * 0.5f);
     last_mx = mx; last_my = my;
 }
 
@@ -276,17 +377,24 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     if (action != GLFW_PRESS) return;
     bool ctrl = (mods & GLFW_MOD_CONTROL) != 0;
     bool shift = (mods & GLFW_MOD_SHIFT) != 0;
+    (void)scancode;
 
-    if (ctrl && key == GLFW_KEY_Z) undo();
+    if (key == GLFW_KEY_KP_1) { camera.set_view("front"); status_text = "View: Front"; }
+    else if (key == GLFW_KEY_KP_3) { camera.set_view("right"); status_text = "View: Right"; }
+    else if (key == GLFW_KEY_KP_7) { camera.set_view("top"); status_text = "View: Top"; }
+    else if (key == GLFW_KEY_KP_5) { camera.ortho = !camera.ortho; status_text = camera.ortho ? "Orthographic" : "Perspective"; }
+    else if (key == GLFW_KEY_KP_0) { camera.set_view("front_right"); status_text = "View: Camera"; }
+    else if (ctrl && key == GLFW_KEY_Z) undo();
     else if (ctrl && key == GLFW_KEY_Y) redo();
     else if (ctrl && key == GLFW_KEY_D) { save_undo("Duplicate"); scene.duplicate_selected(); status_text = "Duplicated"; log_message("Duplicated"); }
+    else if (!ctrl && shift && key == GLFW_KEY_D) { save_undo("Duplicate"); scene.duplicate_selected(); status_text = "Duplicated"; log_message("Duplicated"); }
     else if (ctrl && key == GLFW_KEY_C) { scene.copy_selected(); status_text = "Copied"; log_message("Copied to clipboard"); }
     else if (ctrl && key == GLFW_KEY_V) { save_undo("Paste"); scene.paste_clipboard(); status_text = "Pasted"; log_message("Pasted from clipboard"); }
     else if (ctrl && !shift && key == GLFW_KEY_G) { save_undo("Group"); scene.group_selected(); status_text = "Grouped"; log_message("Grouped selected nodes"); }
     else if (ctrl && shift && key == GLFW_KEY_G) { save_undo("Ungroup"); scene.ungroup_selected(); status_text = "Ungrouped"; log_message("Ungrouped"); }
     else if (ctrl && key == GLFW_KEY_N) setup_default_scene();
     else if (ctrl && key == GLFW_KEY_S) {
-        auto p = save_file_dialog("OCP Scene\0*.ocp\0All\0*.*\0");
+        auto p = save_file_dialog(OCP_FILTER);
         if (!p.empty()) {
             std::string data = scene.save_to_string();
             FILE* f = fopen(p.c_str(), "w");
@@ -294,7 +402,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
         }
     }
     else if (ctrl && key == GLFW_KEY_O) {
-        auto p = open_file_dialog("OCP Scene\0*.ocp\0All\0*.*\0");
+        auto p = open_file_dialog(OCP_FILTER);
         if (!p.empty()) {
             FILE* f = fopen(p.c_str(), "r");
             if (f) {
@@ -305,6 +413,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
                 fread(&data[0], 1, sz, f);
                 fclose(f);
                 scene.load_from_string(data);
+                modifier_stacks.clear();
                 status_text = "Loaded: " + p;
                 log_message("Loaded: " + p);
             }
@@ -340,7 +449,7 @@ static void draw_menu_bar() {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("New Scene", "Ctrl+N")) setup_default_scene();
             if (ImGui::MenuItem("Save Scene", "Ctrl+S")) {
-                auto p = save_file_dialog("OCP Scene\0*.ocp\0All\0*.*\0");
+                auto p = save_file_dialog(OCP_FILTER);
                 if (!p.empty()) {
                     std::string data = scene.save_to_string();
                     FILE* f = fopen(p.c_str(), "w");
@@ -348,32 +457,33 @@ static void draw_menu_bar() {
                 }
             }
             if (ImGui::MenuItem("Load Scene", "Ctrl+O")) {
-                auto p = open_file_dialog("OCP Scene\0*.ocp\0All\0*.*\0");
+                auto p = open_file_dialog(OCP_FILTER);
                 if (!p.empty()) {
                     FILE* f = fopen(p.c_str(), "r");
                     if (f) {
                         fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
                         std::string data(sz, 0); fread(&data[0], 1, sz, f); fclose(f);
                         scene.load_from_string(data);
+                        modifier_stacks.clear();
                         status_text = "Loaded: " + p;
                     }
                 }
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Import OBJ")) {
-                auto p = open_file_dialog("OBJ Files\0*.obj\0All\0*.*\0");
+                auto p = open_file_dialog(OBJ_FILTER);
                 if (!p.empty()) { status_text = "Import: " + p; log_message("Import requested: " + p); }
             }
             if (ImGui::MenuItem("Export OBJ")) {
-                auto p = save_file_dialog("OBJ Files\0*.obj\0All\0*.*\0");
+                auto p = save_file_dialog(OBJ_FILTER);
                 if (!p.empty()) { OBJExporter::export_to_file(p, scene); status_text = "Exported: " + p; }
             }
             if (ImGui::MenuItem("Export STL")) {
-                auto p = save_file_dialog("STL Files\0*.stl\0All\0*.*\0");
+                auto p = save_file_dialog(STL_FILTER);
                 if (!p.empty()) { STLExporter::export_to_file(p, scene); status_text = "Exported: " + p; }
             }
             if (ImGui::MenuItem("Export PNG")) {
-                auto p = save_file_dialog("PNG Files\0*.png\0All\0*.*\0");
+                auto p = save_file_dialog(PNG_FILTER);
                 if (!p.empty()) { PNGExporter::export_framebuffer(p, WIN_W, WIN_H); status_text = "Screenshot: " + p; }
             }
             ImGui::Separator();
@@ -435,7 +545,7 @@ static void draw_menu_bar() {
             if (ImGui::MenuItem("Console", "H")) show_console = !show_console;
             if (ImGui::MenuItem("Lights")) show_light_panel = !show_light_panel;
             if (ImGui::MenuItem("Settings")) show_settings = !show_settings;
-            if (ImGui::MenuItem("Resource Library", "R")) show_resource_browser = !show_resource_browser;
+            if (ImGui::MenuItem("Resource Library")) show_resource_browser = !show_resource_browser;
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help")) {
@@ -450,57 +560,87 @@ static void draw_toolbar() {
     ImGui::SetNextWindowPos(ImVec2(0, 22), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2((float)WIN_W, 32), ImGuiCond_Always);
     ImGui::Begin("##Toolbar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBringToFrontOnFocus);
-    ImGui::SameLine(10);
-    if (ImGui::Button("Cube")) add_primitive("cube");
+
+    ImGui::SameLine(8);
+
+    if (ImGui::Button("+")) ImGui::OpenPopup("AddMenu");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Add Primitive");
+    if (ImGui::BeginPopup("AddMenu")) {
+        if (ImGui::MenuItem("Cube")) add_primitive("cube");
+        if (ImGui::MenuItem("Sphere")) add_primitive("sphere");
+        if (ImGui::MenuItem("Cylinder")) add_primitive("cylinder");
+        if (ImGui::MenuItem("Cone")) add_primitive("cone");
+        if (ImGui::MenuItem("Torus")) add_primitive("torus");
+        if (ImGui::MenuItem("Plane")) add_primitive("plane");
+        if (ImGui::MenuItem("Torus Knot")) add_primitive("torus_knot");
+        if (ImGui::MenuItem("Ico Sphere")) add_primitive("ico_sphere");
+        ImGui::EndPopup();
+    }
+
+    ImGui::SameLine(0, 12);
+    ImGui::TextDisabled("|");
+    ImGui::SameLine(0, 8);
+
+    if (ImGui::RadioButton("G##mv", selected_tool == 0)) selected_tool = 0;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Move Tool (G)");
     ImGui::SameLine();
-    if (ImGui::Button("Sphere")) add_primitive("sphere");
+    if (ImGui::RadioButton("E##rt", selected_tool == 1)) selected_tool = 1;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Rotate Tool (E)");
     ImGui::SameLine();
-    if (ImGui::Button("Cylinder")) add_primitive("cylinder");
+    if (ImGui::RadioButton("R##sc", selected_tool == 2)) selected_tool = 2;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Scale Tool (R)");
+
+    ImGui::SameLine(0, 12);
+    ImGui::TextDisabled("|");
+    ImGui::SameLine(0, 8);
+
+    if (ImGui::SmallButton("Front")) camera.set_view("front");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Front View (Numpad 1)");
     ImGui::SameLine();
-    if (ImGui::Button("Cone")) add_primitive("cone");
+    if (ImGui::SmallButton("Top")) camera.set_view("top");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Top View (Numpad 7)");
     ImGui::SameLine();
-    if (ImGui::Button("Torus")) add_primitive("torus");
+    if (ImGui::SmallButton("Right")) camera.set_view("right");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Right View (Numpad 3)");
     ImGui::SameLine();
-    if (ImGui::Button("Plane")) add_primitive("plane");
-    ImGui::SameLine(250);
-    ImGui::Text("|");
+    if (ImGui::SmallButton("3D")) camera.set_view("front_right");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("3D View");
+
+    ImGui::SameLine(0, 12);
+    ImGui::TextDisabled("|");
+    ImGui::SameLine(0, 8);
+
+    if (ImGui::Button(scene.global_wireframe ? "W##on" : "W##off")) { scene.global_wireframe = !scene.global_wireframe; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Wireframe Toggle (W)");
     ImGui::SameLine();
-    if (ImGui::Button("Front")) camera.set_view("front");
+    if (ImGui::Button(scene.xray_mode ? "X##on" : "X##off")) { scene.xray_mode = !scene.xray_mode; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("X-Ray Toggle (X)");
     ImGui::SameLine();
-    if (ImGui::Button("Top")) camera.set_view("top");
-    ImGui::SameLine();
-    if (ImGui::Button("Right")) camera.set_view("right");
-    ImGui::SameLine();
-    if (ImGui::Button("3D")) camera.set_view("front_right");
-    ImGui::SameLine(450);
-    ImGui::Text("|");
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Move[G]", selected_tool == 0)) selected_tool = 0;
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Rotate[E]", selected_tool == 1)) selected_tool = 1;
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Scale[R]", selected_tool == 2)) selected_tool = 2;
-    ImGui::SameLine();
+    if (ImGui::Button(scene.grid_enabled ? "G##on" : "G##off")) { scene.grid_enabled = !scene.grid_enabled; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Grid Toggle (`)");
+
+    ImGui::SameLine(0, 12);
+    ImGui::TextDisabled("|");
+    ImGui::SameLine(0, 8);
+
     ImGui::PushItemWidth(80);
-    ImGui::DragFloat("Snap", &snap_value, 0.05f, 0.0f, 10.0f);
+    ImGui::DragFloat("##snap", &snap_value, 0.05f, 0.0f, 10.0f, "Snap: %.2f");
     ImGui::PopItemWidth();
-    ImGui::SameLine();
-    ImGui::Text("|");
-    ImGui::SameLine();
-    if (ImGui::Button(scene.global_wireframe ? "Wire[ON]" : "Wire[W]")) { scene.global_wireframe = !scene.global_wireframe; }
-    ImGui::SameLine();
-    if (ImGui::Button(scene.xray_mode ? "XRay[ON]" : "XRay[X]")) { scene.xray_mode = !scene.xray_mode; }
-    ImGui::SameLine();
-    if (ImGui::Button(scene.grid_enabled ? "Grid[ON]" : "Grid[OFF]")) { scene.grid_enabled = !scene.grid_enabled; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Snap Value");
+
     ImGui::End();
 }
 
 static void draw_scene_tree() {
     ImGui::SetNextWindowPos(ImVec2(0, 54), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(220, (float)WIN_H - 54), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2((float)LEFT_PANEL_W, (float)WIN_H - 54), ImGuiCond_Always);
     ImGui::Begin("Scene Hierarchy", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
     ImGui::InputTextWithHint("##search", "Search...", scene_search, sizeof(scene_search));
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 44);
+    if (ImGui::SmallButton("All+##exp")) tree_force_state = 1;
+    ImGui::SameLine();
+    if (ImGui::SmallButton("All-##col")) tree_force_state = -1;
     ImGui::Separator();
 
     auto nodes = scene.get_all_nodes();
@@ -516,11 +656,17 @@ static void draw_scene_tree() {
         bool in_multi = false;
         for (auto* ms : scene.multi_selection) { if (ms == node) { in_multi = true; break; } }
         if (in_multi && scene.selected_node != node) flags |= ImGuiTreeNodeFlags_Selected;
-        if (!node->visible) flags |= ImGuiTreeNodeFlags_DefaultOpen;
-        std::string label = node->mesh ? "[M] " : "[N] ";
+
+        std::string label;
+        if (node->children.size() > 0) label = "[G] ";
+        else if (node->mesh) label = "[M] ";
+        else label = "[N] ";
         label += node->name;
-        if (node->children.size() > 0) {
-            label = "[G] " + node->name;
+        if (!node->visible) label += " *";
+        if (node->locked) label += " #";
+
+        if (tree_force_state != 0) {
+            ImGui::SetNextItemOpen(tree_force_state > 0);
         }
         ImGui::TreeNodeEx((void*)(uintptr_t)node, flags, "%s", label.c_str());
         if (ImGui::IsItemClicked()) {
@@ -532,7 +678,26 @@ static void draw_scene_tree() {
             strncpy(rename_buf, node->name.c_str(), sizeof(rename_buf));
         }
         if (ImGui::IsItemClicked(1)) ImGui::OpenPopup("node_menu");
+
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+            SceneNode* src = node;
+            ImGui::SetDragDropPayload("SCENE_NODE_DRAG", &src, sizeof(SceneNode*));
+            ImGui::Text("Move %s", node->name.c_str());
+            ImGui::EndDragDropSource();
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_NODE_DRAG")) {
+                SceneNode* dragged = *(SceneNode**)payload->Data;
+                if (dragged != node) {
+                    save_undo("Reorder");
+                    log_message("Reorder: " + dragged->name);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
     }
+    tree_force_state = 0;
+
     if (ImGui::BeginPopup("node_menu")) {
         if (ImGui::MenuItem("Rename")) renaming = true;
         if (ImGui::MenuItem("Toggle Visibility") && scene.selected_node) {
@@ -588,102 +753,314 @@ static void draw_scene_tree() {
 }
 
 static void draw_properties() {
-    ImGui::SetNextWindowPos(ImVec2((float)WIN_W - 350, 54), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(350, (float)WIN_H * 0.5f - 27), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2((float)WIN_W - RIGHT_PANEL_W, 54), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2((float)RIGHT_PANEL_W, (float)WIN_H * 0.5f - 27), ImGuiCond_Always);
     ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+
     SceneNode* node = scene.selected_node;
-    if (!node) { ImGui::TextDisabled("No selection"); ImGui::End(); return; }
+    if (!node) {
+        ImGui::TextDisabled("No selection");
+        ImGui::End();
+        return;
+    }
 
     char name_buf[128];
     strncpy(name_buf, node->name.c_str(), sizeof(name_buf));
-    if (ImGui::InputText("Name", name_buf, sizeof(name_buf))) {
+    if (ImGui::InputText("##name", name_buf, sizeof(name_buf))) {
         node->name = name_buf;
     }
 
     ImGui::Separator();
-    ImGui::Text("Transform");
-    vec3 old_pos = node->position;
-    vec3 old_rot = node->rotation;
-    vec3 old_scl = node->scale;
-    ImGui::DragFloat3("Position", &node->position.x, 0.1f);
-    ImGui::DragFloat3("Rotation", &node->rotation.x, 1.0f);
-    ImGui::DragFloat3("Scale", &node->scale.x, 0.05f, 0.01f, 100.0f);
 
-    ImGui::Checkbox("Visible", &node->visible);
-    ImGui::SameLine();
-    ImGui::Checkbox("Locked", &node->locked);
+    if (ImGui::BeginTabBar("PropsTabs")) {
 
-    if (node->material) {
-        ImGui::Separator();
-        ImGui::Text("Material");
-        ImGui::InputText("Mat Name", (char*)node->material->name.c_str(), node->material->name.size());
-        vec4& d = node->material->diffuse;
-        float col[4] = {d.r, d.g, d.b, d.a};
-        if (ImGui::ColorEdit4("Diffuse", col)) { d = vec4(col[0], col[1], col[2], col[3]); node->material->opacity = col[3]; }
-        vec4& sp = node->material->specular;
-        float scol[4] = {sp.r, sp.g, sp.b, sp.a};
-        if (ImGui::ColorEdit4("Specular", scol)) sp = vec4(scol[0], scol[1], scol[2], scol[3]);
-        vec4& em = node->material->emission;
-        float ecol[4] = {em.r, em.g, em.b, em.a};
-        if (ImGui::ColorEdit4("Emission", ecol)) em = vec4(ecol[0], ecol[1], ecol[2], ecol[3]);
-        ImGui::SliderFloat("Metallic", &node->material->metallic, 0.0f, 1.0f);
-        ImGui::SliderFloat("Roughness", &node->material->roughness, 0.0f, 1.0f);
-        ImGui::SliderFloat("Shininess", &node->material->shininess, 1.0f, 200.0f);
-        ImGui::SliderFloat("Opacity", &node->material->opacity, 0.0f, 1.0f);
-        ImGui::Checkbox("Wireframe", &node->material->wireframe);
-        ImGui::SameLine();
-        ImGui::Checkbox("Backface Cull", &node->material->backface_culling);
+        if (ImGui::BeginTabItem("Transform")) {
+            ImGui::Checkbox("Local", &local_space_mode);
+            ImGui::SameLine();
+            ImGui::Checkbox("Visible", &node->visible);
+            ImGui::SameLine();
+            ImGui::Checkbox("Locked", &node->locked);
+
+            ImGui::Separator();
+
+            ImGui::Text("Position");
+            if (local_space_mode) {
+                ImGui::DragFloat3("##pos", &node->position.x, 0.1f);
+            } else {
+                vec3 wp = node->get_world_position();
+                ImGui::DragFloat3("##wpos", &wp.x, 0.1f);
+            }
+            if (ImGui::SmallButton("Reset##pos")) node->position = vec3(0);
+
+            ImGui::Separator();
+            ImGui::Text("Rotation");
+            ImGui::DragFloat3("##rot", &node->rotation.x, 1.0f);
+            if (ImGui::SmallButton("Reset##rot")) node->rotation = vec3(0);
+
+            ImGui::Separator();
+            ImGui::Text("Scale");
+            ImGui::DragFloat3("##scl", &node->scale.x, 0.05f, 0.01f, 100.0f);
+            if (ImGui::SmallButton("Reset##scl")) node->scale = vec3(1);
+
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Material")) {
+            if (node->material) {
+                vec4& d = node->material->diffuse;
+                float col[4] = {d.r, d.g, d.b, d.a};
+                if (ImGui::ColorEdit4("Base Color", col)) {
+                    d = vec4(col[0], col[1], col[2], col[3]);
+                    node->material->opacity = col[3];
+                }
+
+                vec4& sp = node->material->specular;
+                float scol[4] = {sp.r, sp.g, sp.b, sp.a};
+                if (ImGui::ColorEdit4("Specular", scol))
+                    sp = vec4(scol[0], scol[1], scol[2], scol[3]);
+
+                vec4& em = node->material->emission;
+                float ecol[4] = {em.r, em.g, em.b, em.a};
+                if (ImGui::ColorEdit4("Emission", ecol))
+                    em = vec4(ecol[0], ecol[1], ecol[2], ecol[3]);
+
+                ImGui::Separator();
+                ImGui::Text("PBR Properties");
+                ImGui::SliderFloat("Metallic", &node->material->metallic, 0.0f, 1.0f);
+                ImGui::SliderFloat("Roughness", &node->material->roughness, 0.0f, 1.0f);
+                ImGui::SliderFloat("Shininess", &node->material->shininess, 1.0f, 200.0f);
+                ImGui::SliderFloat("Opacity", &node->material->opacity, 0.0f, 1.0f);
+
+                ImGui::Separator();
+                ImGui::Checkbox("Wireframe", &node->material->wireframe);
+                ImGui::SameLine();
+                ImGui::Checkbox("Backface Cull", &node->material->backface_culling);
+
+                ImGui::Separator();
+                ImGui::Text("Texture Slots");
+                if (ImGui::Button("Base Color Map...")) { log_message("Texture: Base Color - not yet implemented"); }
+                if (ImGui::Button("Normal Map...")) { log_message("Texture: Normal - not yet implemented"); }
+                if (ImGui::Button("Roughness Map...")) { log_message("Texture: Roughness - not yet implemented"); }
+                if (ImGui::Button("Metallic Map...")) { log_message("Texture: Metallic - not yet implemented"); }
+                if (ImGui::Button("Emission Map...")) { log_message("Texture: Emission - not yet implemented"); }
+            } else {
+                ImGui::TextDisabled("No material assigned");
+                if (ImGui::Button("Create Material")) {
+                    node->material = std::make_unique<Material>();
+                    node->material->name = node->name + "_mat";
+                }
+            }
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Modifiers")) {
+            if (ImGui::Button("Add Modifier")) ImGui::OpenPopup("AddModifierPopup");
+            if (ImGui::BeginPopup("AddModifierPopup")) {
+                if (ImGui::MenuItem("Subdivision Surface")) add_modifier_to_selected(Modifier::SUBDIVISION);
+                if (ImGui::MenuItem("Mirror")) add_modifier_to_selected(Modifier::MIRROR);
+                if (ImGui::MenuItem("Array")) add_modifier_to_selected(Modifier::ARRAY);
+                if (ImGui::MenuItem("Smooth")) add_modifier_to_selected(Modifier::SMOOTH);
+                if (ImGui::MenuItem("Lattice")) add_modifier_to_selected(Modifier::LATTICE);
+                if (ImGui::MenuItem("Decimate")) add_modifier_to_selected(Modifier::DECIMATE);
+                if (ImGui::MenuItem("Solidify")) add_modifier_to_selected(Modifier::SOLIDIFY);
+                ImGui::EndPopup();
+            }
+
+            ImGui::Separator();
+
+            auto it = modifier_stacks.find(node);
+            if (it != modifier_stacks.end() && !it->second.empty()) {
+                auto& mods = it->second;
+                bool modified = false;
+                int apply_idx = -1;
+                int remove_idx = -1;
+                for (int i = 0; i < (int)mods.size(); i++) {
+                    Modifier& mod = mods[i];
+                    ImGui::PushID(i);
+
+                    std::string hdr = std::string(Modifier::type_name(mod.type)) + "##mod_" + std::to_string(i);
+                    if (ImGui::CollapsingHeader(hdr.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                        ImGui::Checkbox("Enabled", &mod.enabled);
+                        ImGui::SameLine();
+                        if (i > 0 && ImGui::SmallButton("Up")) { std::swap(mods[i], mods[i - 1]); }
+                        ImGui::SameLine();
+                        if (i < (int)mods.size() - 1 && ImGui::SmallButton("Down")) { std::swap(mods[i], mods[i + 1]); }
+
+                        ImGui::Separator();
+
+                        switch (mod.type) {
+                            case Modifier::SUBDIVISION:
+                                ImGui::SliderInt("Levels", &mod.subdiv_levels, 1, 4);
+                                break;
+                            case Modifier::MIRROR:
+                                ImGui::Checkbox("X", &mod.mirror_x); ImGui::SameLine();
+                                ImGui::Checkbox("Y", &mod.mirror_y); ImGui::SameLine();
+                                ImGui::Checkbox("Z", &mod.mirror_z);
+                                ImGui::DragFloat("Offset", &mod.mirror_offset, 0.01f);
+                                break;
+                            case Modifier::ARRAY:
+                                ImGui::SliderInt("Count", &mod.array_count, 1, 100);
+                                ImGui::DragFloat3("Offset", &mod.array_offset.x, 0.1f);
+                                ImGui::Checkbox("Relative", &mod.array_relative);
+                                break;
+                            case Modifier::SMOOTH:
+                                ImGui::SliderFloat("Factor", &mod.smooth_factor, 0.0f, 1.0f);
+                                ImGui::SliderInt("Iterations", &mod.smooth_iterations, 1, 20);
+                                break;
+                            case Modifier::LATTICE:
+                                ImGui::DragFloat3("Resolution", &mod.lattice_resolution.x, 1.0f, 2.0f, 32.0f);
+                                break;
+                            case Modifier::DECIMATE:
+                                ImGui::SliderFloat("Ratio", &mod.decimate_ratio, 0.01f, 1.0f);
+                                break;
+                            case Modifier::SOLIDIFY:
+                                ImGui::DragFloat("Thickness", &mod.solidify_thickness, 0.01f, 0.001f, 10.0f);
+                                break;
+                        }
+
+                        ImGui::Separator();
+                        if (ImGui::Button("Apply")) { apply_idx = i; }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Remove")) { remove_idx = i; }
+                    }
+
+                    ImGui::PopID();
+                    if (apply_idx >= 0 || remove_idx >= 0) { modified = true; break; }
+                }
+                if (apply_idx >= 0) apply_modifier_to_node(node, apply_idx);
+                if (remove_idx >= 0) remove_modifier_from_node(node, remove_idx);
+                (void)modified;
+            } else {
+                ImGui::TextDisabled("No modifiers");
+                ImGui::TextWrapped("Click 'Add Modifier' to add a modifier to this object.");
+            }
+
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Mesh")) {
+            if (node->mesh) {
+                ImGui::Text("Vertices: %d", node->mesh->get_vertex_count());
+                ImGui::Text("Triangles: %d", node->mesh->get_triangle_count());
+                ImGui::Text("Faces: %d", (int)node->mesh->faces.size());
+
+                ImGui::Separator();
+                ImGui::Text("Operations");
+
+                if (ImGui::Button("Subdivide")) {
+                    save_undo("Subdivide");
+                    node->mesh->subdivide();
+                    renderer.invalidate_mesh(node->mesh.get());
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Smooth")) {
+                    save_undo("Smooth");
+                    node->mesh->smooth_vertices();
+                    renderer.invalidate_mesh(node->mesh.get());
+                }
+
+                if (ImGui::Button("Invert Faces")) {
+                    save_undo("Invert");
+                    node->mesh->invert_faces();
+                    renderer.invalidate_mesh(node->mesh.get());
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Weld Vertices")) {
+                    save_undo("Weld");
+                    node->mesh->weld_vertices();
+                    renderer.invalidate_mesh(node->mesh.get());
+                }
+
+                if (ImGui::Button("Center Pivot")) {
+                    save_undo("Center Pivot");
+                    node->mesh->center_pivot();
+                    renderer.invalidate_mesh(node->mesh.get());
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Recalc Normals")) {
+                    node->mesh->compute_normals();
+                    renderer.invalidate_mesh(node->mesh.get());
+                }
+
+                if (ImGui::Button("Flip Normals")) {
+                    save_undo("Flip Normals");
+                    node->mesh->flip_normals();
+                    renderer.invalidate_mesh(node->mesh.get());
+                }
+            } else {
+                ImGui::TextDisabled("No mesh");
+            }
+            ImGui::EndTabItem();
+        }
+
+        ImGui::EndTabBar();
     }
 
-    if (node->mesh) {
-        ImGui::Separator();
-        ImGui::Text("Mesh Info");
-        ImGui::Text("Vertices: %d", node->mesh->get_vertex_count());
-        ImGui::Text("Triangles: %d", node->mesh->get_triangle_count());
-        ImGui::Text("Faces: %d", (int)node->mesh->faces.size());
-        if (ImGui::Button("Subdivide")) { save_undo("Subdivide"); node->mesh->subdivide(); renderer.invalidate_mesh(node->mesh.get()); }
-        ImGui::SameLine();
-        if (ImGui::Button("Invert Faces")) { save_undo("Invert"); node->mesh->invert_faces(); renderer.invalidate_mesh(node->mesh.get()); }
-        ImGui::SameLine();
-        if (ImGui::Button("Weld Vertices")) { save_undo("Weld"); node->mesh->weld_vertices(); renderer.invalidate_mesh(node->mesh.get()); }
-    }
     ImGui::End();
 }
 
 static void draw_ai_panel() {
-    ImGui::SetNextWindowPos(ImVec2((float)WIN_W - 350, (float)WIN_H * 0.5f + 27), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(350, (float)WIN_H * 0.5f - 27), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2((float)WIN_W - RIGHT_PANEL_W, (float)WIN_H * 0.5f + 27), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2((float)RIGHT_PANEL_W, (float)WIN_H * 0.5f - 27), ImGuiCond_Always);
     ImGui::Begin("AI Object Generator", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+
     ImGui::TextWrapped("Describe what to create (FR/EN):");
-    ImGui::InputTextMultiline("##prompt", ai_prompt, sizeof(ai_prompt), ImVec2(-1, 80));
+    ImGui::InputTextMultiline("##prompt", ai_prompt, sizeof(ai_prompt), ImVec2(-1, 70));
+
     if (ImGui::Button("Generate", ImVec2(-1, 30))) {
+        ai_prompt_history.push_back(std::string(ai_prompt));
+        if ((int)ai_prompt_history.size() > MAX_AI_HISTORY)
+            ai_prompt_history.pop_front();
         save_undo("AI Generate");
-        Scene* result = ai_generator.generate_from_prompt(ai_prompt, &scene);
+        ai_generator.generate_from_prompt(ai_prompt, &scene);
         last_ai_result = ai_generator.get_last_description();
         status_text = "AI Generated: " + last_ai_result;
         log_message("AI: " + last_ai_result);
     }
+
     ImGui::Separator();
-    ImGui::Text("Quick Examples:");
-    if (ImGui::Button("House", ImVec2(-1, 0))) { strcpy(ai_prompt, "house"); }
-    if (ImGui::Button("Robot", ImVec2(-1, 0))) { strcpy(ai_prompt, "robot"); }
-    if (ImGui::Button("Castle", ImVec2(-1, 0))) { strcpy(ai_prompt, "castle"); }
-    if (ImGui::Button("Spaceship", ImVec2(-1, 0))) { strcpy(ai_prompt, "spaceship"); }
-    if (ImGui::Button("Tree", ImVec2(-1, 0))) { strcpy(ai_prompt, "tree"); }
-    if (ImGui::Button("Sword", ImVec2(-1, 0))) { strcpy(ai_prompt, "sword"); }
-    if (ImGui::Button("Snowman", ImVec2(-1, 0))) { strcpy(ai_prompt, "snowman"); }
-    if (ImGui::Button("DNA", ImVec2(-1, 0))) { strcpy(ai_prompt, "dna"); }
-    if (ImGui::Button("Skull", ImVec2(-1, 0))) { strcpy(ai_prompt, "skull"); }
-    if (ImGui::Button("Airplane", ImVec2(-1, 0))) { strcpy(ai_prompt, "airplane"); }
-    if (ImGui::Button("Flower", ImVec2(-1, 0))) { strcpy(ai_prompt, "flower"); }
-    if (ImGui::Button("Mushroom", ImVec2(-1, 0))) { strcpy(ai_prompt, "mushroom"); }
-    if (ImGui::Button("Donut", ImVec2(-1, 0))) { strcpy(ai_prompt, "donut pink glaze"); }
-    if (ImGui::Button("Neon Spiral x5", ImVec2(-1, 0))) { strcpy(ai_prompt, "neon spiral 5x circle"); }
-    if (ImGui::Button("Clear Scene", ImVec2(-1, 0))) { setup_default_scene(); }
+
+    if (ImGui::CollapsingHeader("Quick Examples", ImGuiTreeNodeFlags_DefaultOpen)) {
+        int col = 0;
+        auto exbtn = [&](const char* label, const char* prompt) {
+            if (col > 0) ImGui::SameLine();
+            if (ImGui::SmallButton(label)) strcpy(ai_prompt, prompt);
+            col++;
+            if (col >= 4) col = 0;
+        };
+        exbtn("House", "house");
+        exbtn("Robot", "robot");
+        exbtn("Castle", "castle");
+        exbtn("Space", "spaceship");
+        exbtn("Tree", "tree");
+        exbtn("Sword", "sword");
+        exbtn("Snowman", "snowman");
+        exbtn("DNA", "dna");
+        exbtn("Skull", "skull");
+        exbtn("Plane", "airplane");
+        exbtn("Flower", "flower");
+        exbtn("Mushroom", "mushroom");
+        exbtn("Donut", "donut pink glaze");
+        exbtn("Spiral", "neon spiral 5x circle");
+        if (col > 0) ImGui::NewLine();
+    }
+
+    if (!ai_prompt_history.empty() && ImGui::CollapsingHeader("Prompt History")) {
+        for (int i = (int)ai_prompt_history.size() - 1; i >= 0; i--) {
+            if (ImGui::Selectable(ai_prompt_history[i].c_str())) {
+                strncpy(ai_prompt, ai_prompt_history[i].c_str(), sizeof(ai_prompt));
+            }
+        }
+    }
+
     if (!last_ai_result.empty()) {
         ImGui::Separator();
         ImGui::TextWrapped("Last: %s", last_ai_result.c_str());
     }
+
+    ImGui::Separator();
+    if (ImGui::Button("Clear Scene", ImVec2(-1, 0))) setup_default_scene();
+
     ImGui::End();
 }
 
@@ -903,6 +1280,7 @@ static void draw_resource_browser() {
                     case 3: items = &resource_lib.scene_files; label = "Template Scenes"; break;
                     case 4: items = &resource_lib.model_files; label = "3D Mesh Templates"; break;
                     case 5: items = &resource_lib.brush_files; label = "Brush Presets"; break;
+                    default: break;
                 }
                 ImGui::Text("%s (%d items)", label, items ? (int)items->size() : 0);
                 ImGui::Separator();
@@ -964,56 +1342,113 @@ static void draw_settings() {
 
 static void draw_about() {
     if (!show_about) return;
-    ImGui::SetNextWindowSize(ImVec2(450, 300), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(550, 500), ImGuiCond_Always);
     if (ImGui::Begin("About OCP", &show_about, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("OCP - Object Creation Project");
         ImGui::Separator();
-        ImGui::Text("Version 2.2 (C++)");
+        ImGui::Text("Version 3.0 (C++)");
         ImGui::Text("Build: %s %s", __DATE__, __TIME__);
         ImGui::Separator();
-        ImGui::TextWrapped("Professional 3D object creation tool with AI-powered\nprocedural generation & organic deformation.");
+        ImGui::TextWrapped("Professional 3D object creation tool with AI-powered\nprocedural generation, modifier stack, & organic deformation.");
         ImGui::Separator();
         ImGui::TextWrapped("Created by KitariosWebStudio - KWS");
         ImGui::TextWrapped("OpenGL 3.3 Core | Dear ImGui | GLFW | GLM");
         ImGui::Separator();
-        ImGui::Text("Features:");
-        ImGui::BulletText("Manual primitive creation (9 types)");
-        ImGui::BulletText("60+ AI procedural generators with organic deformation");
-        ImGui::BulletText("Bilingual prompt engine (FR/EN)");
-        ImGui::BulletText("Full material editor (PBR)");
-        ImGui::BulletText("Light management");
-        ImGui::BulletText("OBJ/STL/PNG export");
-        ImGui::BulletText("Scene save/load");
-        ImGui::BulletText("Undo/Redo (50 levels)");
-        ImGui::BulletText("Multi-selection, Copy/Paste, Group/Ungroup");
-        ImGui::BulletText("Wireframe & X-Ray modes");
-        ImGui::BulletText("Blender-style QWERTY tools");
+
+        if (ImGui::CollapsingHeader("Features", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::BulletText("Manual primitive creation (9 types)");
+            ImGui::BulletText("60+ AI procedural generators with organic deformation");
+            ImGui::BulletText("Bilingual prompt engine (FR/EN)");
+            ImGui::BulletText("Full PBR material editor with texture slots");
+            ImGui::BulletText("Light management");
+            ImGui::BulletText("Modifier stack (Subdivision, Mirror, Array, Smooth, etc.)");
+            ImGui::BulletText("OBJ/STL/PNG export");
+            ImGui::BulletText("Scene save/load");
+            ImGui::BulletText("Undo/Redo (50 levels)");
+            ImGui::BulletText("Multi-selection, Copy/Paste, Group/Ungroup");
+            ImGui::BulletText("Wireframe & X-Ray modes");
+            ImGui::BulletText("Resource Library browser");
+            ImGui::BulletText("Context-sensitive properties with tabbed UI");
+        }
+
+        if (ImGui::CollapsingHeader("Keyboard Shortcuts")) {
+            ImGui::Columns(2, nullptr, false);
+            ImGui::Text("G"); ImGui::NextColumn(); ImGui::Text("Move Tool"); ImGui::NextColumn();
+            ImGui::Text("E"); ImGui::NextColumn(); ImGui::Text("Rotate Tool"); ImGui::NextColumn();
+            ImGui::Text("R"); ImGui::NextColumn(); ImGui::Text("Scale Tool"); ImGui::NextColumn();
+            ImGui::Text("W"); ImGui::NextColumn(); ImGui::Text("Wireframe Toggle"); ImGui::NextColumn();
+            ImGui::Text("X"); ImGui::NextColumn(); ImGui::Text("X-Ray Toggle"); ImGui::NextColumn();
+            ImGui::Text("F"); ImGui::NextColumn(); ImGui::Text("Focus Selected"); ImGui::NextColumn();
+            ImGui::Text("H"); ImGui::NextColumn(); ImGui::Text("Console Toggle"); ImGui::NextColumn();
+            ImGui::Text("Del"); ImGui::NextColumn(); ImGui::Text("Delete Selected"); ImGui::NextColumn();
+            ImGui::Text("`"); ImGui::NextColumn(); ImGui::Text("Grid Toggle"); ImGui::NextColumn();
+            ImGui::Separator(); ImGui::NextColumn(); ImGui::NextColumn();
+            ImGui::Text("Ctrl+Z"); ImGui::NextColumn(); ImGui::Text("Undo"); ImGui::NextColumn();
+            ImGui::Text("Ctrl+Y"); ImGui::NextColumn(); ImGui::Text("Redo"); ImGui::NextColumn();
+            ImGui::Text("Ctrl+S"); ImGui::NextColumn(); ImGui::Text("Save"); ImGui::NextColumn();
+            ImGui::Text("Ctrl+O"); ImGui::NextColumn(); ImGui::Text("Open"); ImGui::NextColumn();
+            ImGui::Text("Ctrl+D"); ImGui::NextColumn(); ImGui::Text("Duplicate"); ImGui::NextColumn();
+            ImGui::Text("Ctrl+C"); ImGui::NextColumn(); ImGui::Text("Copy"); ImGui::NextColumn();
+            ImGui::Text("Ctrl+V"); ImGui::NextColumn(); ImGui::Text("Paste"); ImGui::NextColumn();
+            ImGui::Text("Ctrl+G"); ImGui::NextColumn(); ImGui::Text("Group"); ImGui::NextColumn();
+            ImGui::Text("Ctrl+A"); ImGui::NextColumn(); ImGui::Text("Select All"); ImGui::NextColumn();
+            ImGui::Text("Shift+D"); ImGui::NextColumn(); ImGui::Text("Duplicate"); ImGui::NextColumn();
+            ImGui::Separator(); ImGui::NextColumn(); ImGui::NextColumn();
+            ImGui::Text("Numpad 1"); ImGui::NextColumn(); ImGui::Text("Front View"); ImGui::NextColumn();
+            ImGui::Text("Numpad 3"); ImGui::NextColumn(); ImGui::Text("Right View"); ImGui::NextColumn();
+            ImGui::Text("Numpad 7"); ImGui::NextColumn(); ImGui::Text("Top View"); ImGui::NextColumn();
+            ImGui::Text("Numpad 5"); ImGui::NextColumn(); ImGui::Text("Persp/Ortho Toggle"); ImGui::NextColumn();
+            ImGui::Text("Numpad 0"); ImGui::NextColumn(); ImGui::Text("Camera View"); ImGui::NextColumn();
+            ImGui::Separator(); ImGui::NextColumn(); ImGui::NextColumn();
+            ImGui::Text("Alt+Left"); ImGui::NextColumn(); ImGui::Text("Orbit"); ImGui::NextColumn();
+            ImGui::Text("Shift+Mid"); ImGui::NextColumn(); ImGui::Text("Pan"); ImGui::NextColumn();
+            ImGui::Text("Ctrl+Mid"); ImGui::NextColumn(); ImGui::Text("Zoom"); ImGui::NextColumn();
+            ImGui::Columns(1);
+        }
+
         ImGui::Separator();
-        ImGui::Text("Tools: G=Move, E=Rotate, R=Scale, W=Wire, X=Xray");
-        ImGui::Text("Actions: Ctrl+C/V copy/paste, Ctrl+G group");
         if (ImGui::Button("OK", ImVec2(120, 0))) show_about = false;
     }
     ImGui::End();
 }
 
 static void draw_status_bar() {
-    ImGui::SetNextWindowPos(ImVec2(0, (float)WIN_H - 24), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2((float)WIN_W, 24), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2(0, (float)WIN_H - BOTTOM_OFFSET), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2((float)WIN_W, (float)BOTTOM_OFFSET), ImGuiCond_Always);
     ImGui::Begin("##StatusBar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
     ImGui::Text("%s", status_text.c_str());
+
     ImGui::SameLine(300);
-    const char* tool_names[] = {"Move[G]", "Rotate[E]", "Scale[R]"};
-    ImGui::Text("| %s | Wire:%s | XRay:%s",
-        tool_names[selected_tool],
+    ImGui::Text("FPS: %.0f", current_fps);
+
+    const char* tool_names[] = {"Move", "Rotate", "Scale"};
+    ImGui::SameLine(400);
+    ImGui::Text("| %s", tool_names[selected_tool]);
+
+    ImGui::SameLine(500);
+    ImGui::Text("| Wire:%s XRay:%s",
         scene.global_wireframe ? "ON" : "OFF",
         scene.xray_mode ? "ON" : "OFF");
-    ImGui::SameLine(WIN_W - 400);
+
+    int total_verts = 0, total_tris = 0;
+    for (auto* n : scene.get_all_nodes()) {
+        if (n->mesh) {
+            total_verts += n->mesh->get_vertex_count();
+            total_tris += n->mesh->get_triangle_count();
+        }
+    }
+
+    float right_start = (float)WIN_W - 400.0f;
+    ImGui::SameLine(right_start);
     ImGui::Text("Nodes: %d | Verts: %d | Tris: %d",
-        scene.get_node_count(),
-        [&]() { int v = 0; for (auto* n : scene.get_all_nodes()) if (n->mesh) v += n->mesh->get_vertex_count(); return v; }(),
-        [&]() { int t = 0; for (auto* n : scene.get_all_nodes()) if (n->mesh) t += n->mesh->get_triangle_count(); return t; }());
-    ImGui::SameLine(WIN_W - 150);
-    ImGui::Text("OpenGL 3.3");
+        scene.get_node_count(), total_verts, total_tris);
+
+    if (scene.selected_node) {
+        ImGui::SameLine(right_start + 320);
+        ImGui::Text("| %s", scene.selected_node->name.c_str());
+    }
+
     ImGui::End();
 }
 
@@ -1062,10 +1497,23 @@ int main() {
     renderer.initialize(WIN_W, WIN_H);
     setup_default_scene();
     discover_resources();
-    log_message("OCP v2.2 initialized - KitariosWebStudio - KWS");
+    log_message("OCP v3.0 initialized - KitariosWebStudio - KWS");
+
+    last_frame_time = glfwGetTime();
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        double now = glfwGetTime();
+        double dt = now - last_frame_time;
+        last_frame_time = now;
+        frame_counter++;
+        fps_update_timer += dt;
+        if (fps_update_timer >= 0.5) {
+            current_fps = (float)frame_counter / (float)fps_update_timer;
+            frame_counter = 0;
+            fps_update_timer = 0.0;
+        }
 
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);

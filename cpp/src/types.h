@@ -1,7 +1,10 @@
 #pragma once
 #include "math_utils.h"
+#include "mesh.h"
 #include <string>
 #include <cstdint>
+#include <memory>
+#include <vector>
 
 namespace ocp {
 
@@ -62,6 +65,50 @@ struct Light {
     vec3 attenuation = vec3(1.0f, 0.09f, 0.032f);
     bool cast_shadows = true;
     bool enabled = true;
+};
+
+struct Modifier {
+    enum Type { SUBDIVISION, MIRROR, ARRAY, SMOOTH, LATTICE, DECIMATE, SOLIDIFY };
+    Type type = SUBDIVISION;
+    std::string name;
+    bool enabled = true;
+
+    int subdiv_levels = 1;
+
+    bool mirror_x = true, mirror_y = false, mirror_z = false;
+    float mirror_offset = 0.0f;
+
+    int array_count = 2;
+    vec3 array_offset = vec3(1.0f, 0, 0);
+    bool array_relative = false;
+
+    float smooth_factor = 0.5f;
+    int smooth_iterations = 1;
+
+    vec3 lattice_resolution = vec3(2, 2, 2);
+
+    float decimate_ratio = 0.5f;
+
+    float solidify_thickness = 0.1f;
+
+    std::shared_ptr<Mesh> applied_mesh;
+
+    static const char* type_name(Type t) {
+        switch (t) {
+            case SUBDIVISION: return "Subdivision Surface";
+            case MIRROR: return "Mirror";
+            case ARRAY: return "Array";
+            case SMOOTH: return "Smooth";
+            case LATTICE: return "Lattice";
+            case DECIMATE: return "Decimate";
+            case SOLIDIFY: return "Solidify";
+        }
+        return "Unknown";
+    }
+
+    std::string get_display_name() const {
+        return std::string(type_name(type)) + "##" + std::to_string((uintptr_t)this);
+    }
 };
 
 } // namespace ocp

@@ -1,107 +1,128 @@
 # OCP - Object Creation Project
 
-Logiciel de creation d'objets 3D et 2D avec edition manuelle et generation par IA.
+Professional 3D/2D object creation tool with manual editing and AI procedural generation.
+**Developed by KitariosWebStudio - KWS**
 
-## Fonctionnalites
+## Features
 
-- **Mode Manuel**: Editeur 3D complet avec OpenGL, 9 primitives, transformations, materiaux PBR
-- **Mode IA**: Generer des scenes 3D complexes a partir de prompts textuels - 60+ generators avec deformation organique, 100% local
-- **Editeur Pro**: Multi-selection, Copier/Coller, Grouper/Degrouper, Wireframe, X-Ray
-- **Outils QWERTY**: G=Deplacer, E=Tourner, R=Dimensionner (style Blender)
-- **Export**: Formats OBJ, STL, PNG
-- **Undo/Redo**: Systeme d'annulation avec 50 niveaux
-- **Save/Load**: Serialisation de scene complete
-- **Gizmos**: Transform Move/Rotate/Scale dans le viewport
-- **60+ Scenes IA**: Maison, robot, chateau, vaisseau, arbre, epee, avion, bateau, crane, cerveau, fleur, champignon, donut, bijoux, trone, campement, fountain, crystal, corail, papillon, chat, chien, oiseau, caverne, tente, et plus
+### Pro Editor
+- **Cook-Torrance PBR** rendering with real-time metallic/roughness workflow
+- **16 dynamic lights** with shadow mapping
+- **Material Editor** — Albedo, Metallic, Roughness, AO, Normal, Emission
+- **Grid** with distance-based fade-out
+- **Selection Outlines** with FBO-based glow
+- **Performance HUD** (FPS, draw calls, triangles)
+- **Modifier Stack** — Subdivision, Mirror, Array, Smooth, Lattice, Decimate, Solidify
+- **Wireframe** (W) and **X-Ray** (X) modes
 
-## Telechargement
+### AI Generation (60+ Generators)
+- **Organic deformation** — Perlin noise, ridged multifractal, domain warping
+- No symmetry artifacts — every mesh is unique
+- Scenes: house, robot, castle, spaceship, tree, sword, airplane, boat, skull, brain, flower, mushroom, donut, jewelry, throne, camp, fountain, crystal, coral, butterfly, cat, dog, bird, cave, tent, bookshelf, dragon, alien, car, tank, guitar, piano, house interior, city, dungeon, factory, library, market, tower, bridge, garden, lighthouse, windmill, volcano, mountain, ocean, space station, submarine, robot army, medieval village, cyberpunk city, steampunk machine, fantasy castle, ancient temple, modern skyscraper, haunted house, underwater base, space colony, and more
+- 100% offline — no internet required
 
-### Recommande — C++ (v2.2)
-**[Telecharger OCP v2.2 - Installeur](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.2/OCP-v2.2-Installer.exe)** — Installeur Windows avec raccourcis et desinstallation. (~1.3 Mo)
+### QWERTY Tools (Blender-style)
+- G = Move | E = Rotate | R = Scale | Q = Select
+- Multi-selection (Ctrl+Click)
+- Copy/Paste (Ctrl+C/V)
+- Group/Ungroup (Ctrl+G)
+- Undo/Redo (Ctrl+Z/Y) — 50 levels
+- Save/Load scenes (Ctrl+S/O)
 
-**[Telecharger OCP v2.2 - Portable](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.2/OCP-v2.2-CPP.zip)** — Version portable sans installation. Extraire le zip et lancer `OCP.exe`.
+### Export
+- OBJ, STL, PNG
 
-### Ancien — C++ (v2.1)
-**[Telecharger OCP v2.1 (C++)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.1/OCP-v2.1-CPP.zip)** — Version precedente.
+### 3D Resource Library (3.4 GB)
+- **80+ PBR textures** across 13 categories (wood, metal, stone, fabric, etc.)
+- **44 high-res 2048x2048 textures**
+- **20 HDRI environment maps** + 24 panoramas (for realistic lighting)
+- **78 PBR material presets**
+- **148 mesh templates**
+- **200 font data packs** for 3D text
+- **39 drawing brushes**
+- **12 scene templates**
 
-### Python (v1.0)
-**[Telecharger OCP.exe (v1.0 Python)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v1.0/OCP.exe)** — Executable Windows, pas besoin d'installer Python.
+## Download
 
-## Demarrage Rapide
+### v2.3 — Full Installer (Recommended)
+**[OCP v2.3 Setup (667 MB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.3/OCP-v2.3-Setup.exe)** — Professional installer with all resources embedded (textures, models, fonts, brushes, scenes, materials). Just run the installer!
 
-### Depuis l'executable (v2.2)
-1. Telecharger `OCP-v2.2-Installer.exe` ci-dessus
-2. Lancer l'installeur et suivre les etapes
-3. OCP sera accessible via le menu Demarrer
+**[OCP HDRI Pack (1.7 GB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.3/OCP-HDRI-Pack.7z)** — HDRI environment maps for realistic lighting. Place next to `OCP-v2.3-Setup.exe` before installing — the installer will extract it automatically.
 
-### Depuis la version portable (v2.2)
-1. Telecharger `OCP-v2.2-CPP.zip` ci-dessus
-2. Extraire le zip
-3. Double-cliquer sur `OCP.exe` (`libwinpthread-1.dll` doit etre dans le meme dossier)
+### v2.3 — Portable
+**[OCP v2.3 Portable (Part 1: Core)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.3/OCP-v2.3-part1-core.zip)** — exe + textures + models + fonts + brushes + scenes + materials (~660 MB)
 
-### Depuis la source (Python)
+**[OCP v2.3 Portable (Part 2: HDRI)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.3/OCP-v2.3-part2-hdri.zip)** — HDRI environment maps (~1.7 GB)
+
+### Previous Versions
+- **[v2.2 Installer](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.2/OCP-v2.2-Installer.exe)** — Previous version (~1.3 MB, exe only)
+- **[v2.1](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.1/OCP-v2.1-CPP.zip)** — C++ version
+- **[v1.0 Python](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v1.0/OCP.exe)** — Original Python version (117 MB)
+
+## Quick Start
+
+### Installer (v2.3)
+1. Download `OCP-v2.3-Setup.exe` (and optionally `OCP-HDRI-Pack.7z` for HDRI lighting)
+2. Run the installer and follow the steps
+3. Select which components to install (textures, models, fonts, HDRI, etc.)
+4. OCP will appear in your Start Menu
+
+### Portable (v2.3)
+1. Download `OCP-v2.3-part1-core.zip` and `OCP-v2.3-part2-hdri.zip`
+2. Extract both into the same folder
+3. Run `OCP.exe` (`libwinpthread-1.dll` must be in the same folder)
+
+### Build from Source (C++)
+```bash
+# Requires MinGW-w64 (MSVCRT) at C:\mingw64_msvcrt\mingw64\bin
+python cpp/build.py
+```
+
+### Build from Source (Python)
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-### Depuis la source (C++)
-```bash
-# Necessite MinGW-w64 (MSVCRT) a C:\mingw64_msvcrt\mingw64\bin
-python cpp/build.py
-```
+## Keyboard Shortcuts
 
-## Raccourcis Clavier
-
-| Raccourci | Action |
-|-----------|--------|
-| Ctrl+Z | Annuler (Undo) |
-| Ctrl+Y | Refaire (Redo) |
-| Ctrl+C | Copier |
-| Ctrl+V | Coller |
-| Ctrl+D | Dupliquer |
-| Ctrl+G | Grouper |
-| Ctrl+Shift+G | Degrouper |
-| Ctrl+S | Sauvegarder |
-| Ctrl+O | Ouvrir scene |
-| Ctrl+N | Nouvelle scene |
-| Ctrl+A | Selectionner tout |
-| G | Outil Deplacer (Move) |
-| E | Outil Tourner (Rotate) |
-| R | Outil Dimensionner (Scale) |
-| W | Mode Wireframe |
-| X | Mode X-Ray |
-| F | Centrer sur selection |
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Z | Undo |
+| Ctrl+Y | Redo |
+| Ctrl+C / V | Copy / Paste |
+| Ctrl+D | Duplicate |
+| Ctrl+G | Group |
+| Ctrl+Shift+G | Ungroup |
+| Ctrl+S / O | Save / Open scene |
+| Ctrl+N | New scene |
+| Ctrl+A | Select all |
+| Q | Select tool |
+| G | Move tool |
+| E | Rotate tool |
+| R | Scale tool |
+| W | Wireframe mode |
+| X | X-Ray mode |
+| F | Focus on selection |
 | H | Console |
-| Del | Supprimer selection |
-| F1 | A propos |
-| Molette milieu | Orbiter |
-| Clic droit | Pan |
-| Molette | Zoom |
-| Ctrl+Clic | Multi-selection |
+| Del | Delete selection |
+| F1 | About |
+| Middle Mouse | Orbit |
+| Right Click | Pan |
+| Scroll | Zoom |
+| Ctrl+Click | Multi-select |
 
-## Stack Technique
+## Tech Stack
 
-### v2.2 (C++) — Recommande
-- C++17 / MinGW-w64
-- OpenGL 3.3 + Dear ImGui
-- GLFW 3.4
-- GLM (math)
+- C++17 / MinGW-w64 (MSVCRT)
+- OpenGL 3.3 Core + Dear ImGui
+- GLFW 3.4 (window/input)
+- GLM (mathematics)
 - GLAD (OpenGL loader)
+- Cook-Torrance BRDF (PBR rendering)
 - Smart pointers (zero memory leaks)
-- 60+ generators avec deformation organique Perlin noise
+- 60+ AI generators with Perlin noise organic deformation
 
-### v1.0 (Python)
-- Python 3.10+
-- PyQt6 (Interface)
-- PyOpenGL (Rendu 3D)
-- NumPy (Mathematiques)
-- Pillow (Export Image)
+## License
 
-## Auteur
-
-Developpe par **KitariosWebStudio - KWS**
-
-## Licence
-
-MIT
+MIT License — Copyright 2026 KitariosWebStudio - KWS
