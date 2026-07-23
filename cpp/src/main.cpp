@@ -378,10 +378,8 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
         if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
             if (mods & GLFW_MOD_CONTROL) {
                 mouse_zooming = true;
-            } else if (mods & GLFW_MOD_SHIFT) {
-                mouse_panning = true;
             } else {
-                mouse_orbiting = true;
+                mouse_panning = true;
             }
         } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
             if (viewport_hovered) {
@@ -593,11 +591,21 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     bool shift = (mods & GLFW_MOD_SHIFT) != 0;
     (void)scancode;
 
+    // Suppress bindings while Roblox camera mode (right-click held)
+    if (right_held_for_orbit) return;
+
     if (key == GLFW_KEY_KP_1) { camera.set_view("front"); status_text = "View: Front"; }
     else if (key == GLFW_KEY_KP_3) { camera.set_view("right"); status_text = "View: Right"; }
     else if (key == GLFW_KEY_KP_7) { camera.set_view("top"); status_text = "View: Top"; }
     else if (key == GLFW_KEY_KP_5) { camera.ortho = !camera.ortho; status_text = camera.ortho ? "Orthographic" : "Perspective"; }
     else if (key == GLFW_KEY_KP_0) { camera.set_view("front_right"); status_text = "View: Camera"; }
+    // Blender: 1/2/3 views (no numpad)
+    else if (!ctrl && key == GLFW_KEY_1) { camera.set_view("front"); status_text = "View: Front"; }
+    else if (!ctrl && key == GLFW_KEY_2) { camera.set_view("right"); status_text = "View: Right"; }
+    else if (!ctrl && key == GLFW_KEY_3) { camera.set_view("top"); status_text = "View: Top"; }
+    else if (ctrl && key == GLFW_KEY_1) { camera.set_view("back"); status_text = "View: Back"; }
+    else if (ctrl && key == GLFW_KEY_2) { camera.set_view("left"); status_text = "View: Left"; }
+    else if (ctrl && key == GLFW_KEY_3) { camera.set_view("bottom"); status_text = "View: Bottom"; }
     else if (ctrl && key == GLFW_KEY_Z) undo();
     else if (ctrl && key == GLFW_KEY_Y) redo();
     else if (ctrl && key == GLFW_KEY_D) { save_undo("Duplicate"); scene.duplicate_selected(); status_text = "Duplicated"; log_message("Duplicated"); }
@@ -640,9 +648,9 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
         if (!ns.empty()) scene.selected_node = ns[0];
     }
     else if (key == GLFW_KEY_DELETE) { save_undo("Delete"); scene.delete_selected(); status_text = "Deleted"; log_message("Deleted selected"); }
-    else if (key == GLFW_KEY_G && !ctrl) { selected_tool = 0; status_text = "Tool: Move (G)"; log_message("Tool: Move"); }
-    else if (key == GLFW_KEY_E && !ctrl) { selected_tool = 1; status_text = "Tool: Rotate (E)"; log_message("Tool: Rotate"); }
-    else if (key == GLFW_KEY_R && !ctrl) { selected_tool = 2; status_text = "Tool: Scale (R)"; log_message("Tool: Scale"); }
+    else if (key == GLFW_KEY_G && !ctrl) { selected_tool = 0; status_text = "Tool: Grab (G)"; log_message("Tool: Grab/Move"); }
+    else if (key == GLFW_KEY_R && !ctrl) { selected_tool = 1; status_text = "Tool: Rotate (R)"; log_message("Tool: Rotate"); }
+    else if (key == GLFW_KEY_S && !ctrl) { selected_tool = 2; status_text = "Tool: Scale (S)"; log_message("Tool: Scale"); }
     else if (key == GLFW_KEY_W && !ctrl) { scene.global_wireframe = !scene.global_wireframe; status_text = scene.global_wireframe ? "Wireframe: ON" : "Wireframe: OFF"; }
     else if (key == GLFW_KEY_X && !ctrl) { scene.xray_mode = !scene.xray_mode; status_text = scene.xray_mode ? "X-Ray: ON" : "X-Ray: OFF"; }
     else if (key == GLFW_KEY_F && scene.selected_node) {
