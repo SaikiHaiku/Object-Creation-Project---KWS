@@ -15,6 +15,18 @@ Professional 3D/2D object creation tool with manual editing and AI procedural ge
 - **Modifier Stack** — Subdivision, Mirror, Array, Smooth, Lattice, Decimate, Solidify
 - **Wireframe** (W) and **X-Ray** (X) modes
 
+### Edit Mode (Tab)
+- **BMesh half-edge topology** — real professional mesh data structure
+- **Vertex/Edge/Face selection** with Ctrl+Click for multi-select
+- **33 modeling tools**: Extrude, Inset, Bevel, Loop Cut, Knife, Bridge, Fill, Grid Fill, Merge, Split, Weld, Rip, Spin, Screw, Solidify, Mirror, Subdivide, Decimate, Triangulate, Untriangulate, Relax, Smooth, Recalculate/Flip Normals
+- **Edit overlays**: Vertex dots, edge highlights, face selection glow
+
+### Sculpt Mode (Shift+Tab)
+- **10 brush types**: Draw, Clay, Inflate, Smooth, Flatten, Grab, Crease, Pinch, Mask, SmoothMask
+- **Adjustable** radius, strength, focal falloff
+- **X/Y/Z symmetry** support
+- Real-time sculpt cursor visualization
+
 ### AI Generation (60+ Generators)
 - **Organic deformation** — Perlin noise, ridged multifractal, domain warping
 - No symmetry artifacts — every mesh is unique
@@ -43,6 +55,9 @@ Professional 3D/2D object creation tool with manual editing and AI procedural ge
 - **12 scene templates**
 
 ## Download
+
+### v3.1 — Latest (BMesh Edit + Sculpt Mode)
+**[OCP v3.1](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.1/OCP-v3.1.exe)** (~5 MB) + **[libwinpthread-1.dll](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.1/libwinpthread-1.dll)** — BMesh edit mode, sculpt mode, 33 modeling tools, 10 sculpt brushes
 
 ### v2.3 — Full Installer (Recommended)
 **[OCP v2.3 Setup (667 MB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v2.3/OCP-v2.3-Setup.exe)** — Professional installer with all resources embedded (textures, models, fonts, brushes, scenes, materials). Just run the installer!
@@ -97,6 +112,8 @@ python main.py
 | Ctrl+S / O | Save / Open scene |
 | Ctrl+N | New scene |
 | Ctrl+A | Select all |
+| Tab | Edit Mode toggle |
+| Shift+Tab | Sculpt Mode toggle |
 | Q | Select tool |
 | G | Move tool |
 | E | Rotate tool |
