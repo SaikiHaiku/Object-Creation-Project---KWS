@@ -34,10 +34,16 @@ resources/
 
 # Build tools and temp files
 7z/
+7z-extract/
+installer/
 installer_staging/
 *.7z
 *.nsi
 sfx_config.txt
+nsis-page.html
+nsis-setup.exe
+7z-install.exe
+7zr.exe
 upload_release.py
 build_installer.py
 build_log.txt
