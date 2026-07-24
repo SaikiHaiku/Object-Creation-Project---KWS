@@ -1695,15 +1695,7 @@ static void draw_edit_panel() {
     if (tool_btn("Extrude", "Extrude selected", edit_tool == 0)) edit_tool = 0;
     if (tool_btn("Inset", "Inset faces", edit_tool == 1)) edit_tool = 1;
     if (tool_btn("Bevel", "Bevel edges/verts", edit_tool == 2)) edit_tool = 2;
-    if (tool_btn("Loop Cut", "Add loop cut", edit_tool == 3)) edit_tool = 3;
-    if (tool_btn("Knife", "Knife cut through mesh", edit_tool == 4)) edit_tool = 4;
-    if (tool_btn("Bridge", "Bridge edge loops", edit_tool == 5)) edit_tool = 5;
-    if (tool_btn("Fill", "Fill hole", edit_tool == 6)) edit_tool = 6;
     if (tool_btn("Merge", "Merge at center", edit_tool == 7)) edit_tool = 7;
-    if (tool_btn("Split", "Split edge", edit_tool == 8)) edit_tool = 8;
-    if (tool_btn("Weld", "Weld vertices", edit_tool == 9)) edit_tool = 9;
-    if (tool_btn("Rip", "Rip vertex", edit_tool == 10)) edit_tool = 10;
-    if (tool_btn("Spin", "Spin tool", edit_tool == 11)) edit_tool = 11;
     if (tool_btn("Solidify", "Solidify mesh", edit_tool == 12)) edit_tool = 12;
     if (tool_btn("Mirror", "Mirror mesh", edit_tool == 13)) edit_tool = 13;
 
@@ -1725,7 +1717,6 @@ static void draw_edit_panel() {
                 case 0: edit_tools::extrude_region(bm, vec3(0, 0.2f, 0)); break;
                 case 1: edit_tools::inset_faces(bm, 0.05f); break;
                 case 2: edit_tools::bevel_edges(bm, 0.05f); break;
-                case 3: break;
                 case 7: edit_tools::merge_at_center(bm); break;
                 case 12: edit_tools::solidify(bm, 0.1f); break;
                 case 13: edit_tools::mirror(bm, 0); break;
@@ -1739,23 +1730,29 @@ static void draw_edit_panel() {
             edit_tools::subdivide(bm, 1);
             sync_bmesh_to_mesh(edit_node);
         }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Subdivide selected faces");
         ImGui::SameLine();
         if (ImGui::Button("Smooth")) {
             edit_tools::smooth(bm, 0.5f, 1);
             sync_bmesh_to_mesh(edit_node);
         }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Smooth vertex positions");
         if (ImGui::Button("Triangulate")) {
             edit_tools::triangulate(bm);
             sync_bmesh_to_mesh(edit_node);
         }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Convert all faces to triangles");
         ImGui::SameLine();
         if (ImGui::Button("Recalc N")) {
             edit_tools::recalculate_normals(bm);
             sync_bmesh_to_mesh(edit_node);
         }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Recalculate face normals");
         if (ImGui::Button("Select All")) { bm.select_all(true); }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Select all geometry");
         ImGui::SameLine();
         if (ImGui::Button("Deselect All")) { bm.select_all(false); }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Deselect everything");
     }
 
     ImGui::Separator();
