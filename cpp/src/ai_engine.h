@@ -101,6 +101,8 @@ private:
     Mesh build_ring(const VolumeDescription& vol);
     Mesh build_wedge(const VolumeDescription& vol);
     Mesh build_disc(const VolumeDescription& vol);
+    Mesh build_arrow(const VolumeDescription& vol);
+    Mesh build_plane(const VolumeDescription& vol);
 
     // Loft: interpolates cross-sections along a path
     struct CrossSection {
@@ -156,6 +158,8 @@ private:
     static VolumeDescription make_ring(vec3 pos, float inner_r, float outer_r, int seg = 24);
     static VolumeDescription make_disc(vec3 pos, float r, float thickness, int seg = 24);
     static VolumeDescription make_wedge(vec3 pos, float r, float h, float angle, int seg = 24);
+    static VolumeDescription make_arrow(vec3 pos, float shaft_r, float shaft_h, float head_r, float head_h, int seg = 12);
+    static VolumeDescription make_plane(vec3 pos, vec3 scale);
 
     // Fallback: build a generic shape from the prompt shapes
     DecomposedObject build_generic(const ParsedPrompt& p);

@@ -21,7 +21,14 @@ static std::string to_lower(const std::string& s) {
 static bool contains_word(const std::string& text, const std::string& word) {
     std::string lt = to_lower(text);
     std::string lw = to_lower(word);
-    return lt.find(lw) != std::string::npos;
+    size_t pos = 0;
+    while ((pos = lt.find(lw, pos)) != std::string::npos) {
+        bool left_ok = (pos == 0) || !std::isalnum((unsigned char)lt[pos - 1]);
+        bool right_ok = (pos + lw.size() >= lt.size()) || !std::isalnum((unsigned char)lt[pos + lw.size()]);
+        if (left_ok && right_ok) return true;
+        pos += lw.size();
+    }
+    return false;
 }
 
 // ============================================================
@@ -30,6 +37,7 @@ static bool contains_word(const std::string& text, const std::string& word) {
 
 ParsedPrompt PromptEngine::parse(const std::string& prompt) {
     ParsedPrompt p; p.original = prompt;
+    { std::random_device rd; p.seed = rd(); }
     std::string lp = to_lower(prompt);
 
     struct { const char* name; const char* keywords; } scenes[] = {
@@ -655,6 +663,95 @@ Mesh ParametricBuilder::build_disc(const VolumeDescription& vol) {
     return m;
 }
 
+// ---- ARROW (shaft cylinder + head cone) ----
+Mesh ParametricBuilder::build_arrow(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamArrow" : vol.name;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    float shaft_r = vol.params.cylinder.radius;
+    float shaft_h = vol.params.cylinder.height;
+    float head_r = vol.params.cone.radius;
+    float head_h = vol.params.cone.height;
+    int seg = vol.segments;
+
+    // Shaft (cylinder)
+    float hh = shaft_h * 0.5f;
+    for (int i = 0; i <= seg; i++) {
+        float theta = 2.0f * (float)M_PI * i / seg;
+        float ct = cosf(theta), st = sinf(theta);
+        float n = vol_noise(ct * ns, 0, st * ns, seed);
+        float rr = shaft_r * (1.0f + n * na);
+        m.add_vertex(vec3(ct * rr, -hh, st * rr), vec3(0, -1, 0), vec2((float)i / seg, 0));
+        m.add_vertex(vec3(ct * rr, hh, st * rr), vec3(0, 1, 0), vec2((float)i / seg, 1));
+    }
+    for (int i = 0; i < seg; i++) {
+        uint32_t b = i * 2;
+        m.add_face({(uint32_t)b, (uint32_t)(b + 1), (uint32_t)(b + 3), (uint32_t)(b + 2)});
+    }
+    // Shaft caps
+    uint32_t bot_c = (uint32_t)m.vertices.size();
+    m.add_vertex(vec3(0, -hh, 0), vec3(0, -1, 0));
+    for (int i = 0; i < seg; i++) m.add_face({bot_c, (uint32_t)(i * 2 + 2), (uint32_t)(i * 2)});
+    uint32_t top_c = (uint32_t)m.vertices.size();
+    m.add_vertex(vec3(0, hh, 0), vec3(0, 1, 0));
+    for (int i = 0; i < seg; i++) m.add_face({top_c, (uint32_t)(i * 2 + 1), (uint32_t)(i * 2 + 3)});
+
+    // Head (cone, sits on top of shaft)
+    float head_base = hh;
+    uint32_t tip = (uint32_t)m.vertices.size();
+    m.add_vertex(vec3(0, head_base + head_h, 0), vec3(0, 1, 0));
+    for (int i = 0; i <= seg; i++) {
+        float theta = 2.0f * (float)M_PI * i / seg;
+        float ct = cosf(theta), st = sinf(theta);
+        float n = vol_noise(ct * ns, head_base * ns, st * ns, seed + 20);
+        float rr = head_r * (1.0f + n * na);
+        vec3 nrm = glm::normalize(vec3(ct * head_h / head_r, 1.0f, st * head_h / head_r));
+        m.add_vertex(vec3(ct * rr, head_base, st * rr), nrm, vec2((float)i / seg, 0));
+    }
+    for (int i = 0; i < seg; i++) {
+        uint32_t ring_start = tip + 1;
+        m.add_face({tip, (uint32_t)(ring_start + i + 1), (uint32_t)(ring_start + i)});
+    }
+
+    m.compute_normals();
+    return m;
+}
+
+// ---- PLANE (flat quad) ----
+Mesh ParametricBuilder::build_plane(const VolumeDescription& vol) {
+    Mesh m; m.name = vol.name.empty() ? "ParamPlane" : vol.name;
+    float seed = vol.seed_offset;
+    float na = vol.noise_amount;
+    float ns = vol.noise_scale;
+    vec3 s = vol.scale;
+    float hx = s.x * 0.5f;
+    float hz = s.z * 0.5f;
+
+    // 4 corner vertices
+    float n0 = vol_noise(-hx * ns, 0, -hz * ns, seed);
+    float n1 = vol_noise(hx * ns, 0, -hz * ns, seed);
+    float n2 = vol_noise(hx * ns, 0, hz * ns, seed);
+    float n3 = vol_noise(-hx * ns, 0, hz * ns, seed);
+
+    m.add_vertex(vec3(-hx, n0 * na * s.y, -hz), vec3(0, 1, 0), vec2(0, 0));
+    m.add_vertex(vec3(hx, n1 * na * s.y, -hz), vec3(0, 1, 0), vec2(1, 0));
+    m.add_vertex(vec3(hx, n2 * na * s.y, hz), vec3(0, 1, 0), vec2(1, 1));
+    m.add_vertex(vec3(-hx, n3 * na * s.y, hz), vec3(0, 1, 0), vec2(0, 1));
+
+    m.add_face({0, 1, 2, 3});
+
+    // Bottom face
+    m.add_vertex(vec3(-hx, -n0 * na * s.y * 0.01f, -hz), vec3(0, -1, 0), vec2(0, 0));
+    m.add_vertex(vec3(hx, -n1 * na * s.y * 0.01f, -hz), vec3(0, -1, 0), vec2(1, 0));
+    m.add_vertex(vec3(hx, -n2 * na * s.y * 0.01f, hz), vec3(0, -1, 0), vec2(1, 1));
+    m.add_vertex(vec3(-hx, -n3 * na * s.y * 0.01f, hz), vec3(0, -1, 0), vec2(0, 1));
+    m.add_face({4, 7, 6, 5});
+
+    m.compute_normals();
+    return m;
+}
+
 // ---- LOFT (interpolates cross-sections along a path) ----
 Mesh ParametricBuilder::build_loft(const VolumeDescription& vol,
                                    const std::vector<CrossSection>& path) {
@@ -729,6 +826,8 @@ Mesh ParametricBuilder::build(const DecomposedObject& obj) {
             case VolumeType::Ring: part = build_ring(vol); break;
             case VolumeType::Wedge: part = build_wedge(vol); break;
             case VolumeType::Disc: part = build_disc(vol); break;
+            case VolumeType::Arrow: part = build_arrow(vol); break;
+            case VolumeType::Plane: part = build_plane(vol); break;
             default: part = build_box(vol); break;
         }
 
@@ -832,6 +931,21 @@ VolumeDescription Decomposer::make_wedge(vec3 pos, float r, float h, float angle
     v.position = pos; v.scale = vec3(1);
     v.params.wedge.radius = r; v.params.wedge.height = h;
     v.params.wedge.angle = angle; v.segments = seg;
+    return v;
+}
+
+VolumeDescription Decomposer::make_arrow(vec3 pos, float shaft_r, float shaft_h, float head_r, float head_h, int seg) {
+    VolumeDescription v; v.type = VolumeType::Arrow;
+    v.position = pos; v.scale = vec3(1);
+    v.params.cylinder.radius = shaft_r; v.params.cylinder.height = shaft_h;
+    v.params.cone.radius = head_r; v.params.cone.height = head_h;
+    v.segments = seg;
+    return v;
+}
+
+VolumeDescription Decomposer::make_plane(vec3 pos, vec3 scale) {
+    VolumeDescription v; v.type = VolumeType::Plane;
+    v.position = pos; v.scale = scale;
     return v;
 }
 
@@ -1569,34 +1683,1179 @@ void Decomposer::init_rules() {
             DecomposedObject obj; obj.name = "Mountain";
             float s = sz * 2.0f;
 
-            // Main peak (cone)
             auto peak = make_cone(vec3(0, s*0.5f, 0), s*0.8f, s*1.0f, 20);
             peak.noise_amount = 0.12f; peak.noise_scale = 3.0f; peak.seed_offset = seed;
             peak.material.diffuse = vec4(0.45f, 0.42f, 0.38f, 1);
             peak.name = "Peak";
             obj.volumes.push_back(peak);
 
-            // Snow cap (hemisphere)
             auto snow = make_hemisphere(vec3(0, s*0.9f, 0), s*0.2f, 12);
             snow.noise_amount = 0.1f; snow.seed_offset = seed + 5;
             snow.material.diffuse = vec4(0.95f, 0.96f, 0.98f, 1);
             snow.name = "SnowCap";
             obj.volumes.push_back(snow);
 
-            // Secondary peak
             auto sec = make_cone(vec3(s*0.3f, s*0.3f, s*0.2f), s*0.4f, s*0.6f, 14);
             sec.noise_amount = 0.1f; sec.seed_offset = seed + 10;
             sec.material.diffuse = vec4(0.48f, 0.44f, 0.4f, 1);
             sec.name = "SecondaryPeak";
             obj.volumes.push_back(sec);
 
-            // Base (disc)
             auto base = make_disc(vec3(0, -s*0.05f, 0), s*1.2f, s*0.1f, 20);
             base.noise_amount = 0.08f; base.seed_offset = seed + 15;
             base.material.diffuse = vec4(0.35f, 0.33f, 0.28f, 1);
             base.name = "Base";
             obj.volumes.push_back(base);
 
+            return obj;
+        }
+    });
+
+    // ============================================================
+    // ADDITIONAL DECOMPOSITION RULES — missing scene types
+    // ============================================================
+
+    rules.push_back({"snowman", {"snowman", "bonhomme"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Snowman";
+            float s = sz; vec4 w(0.95f, 0.96f, 0.98f, 1);
+            auto body = make_sphere(vec3(0, s*0.2f, 0), s*0.35f, 16);
+            body.noise_amount = 0.03f; body.seed_offset = seed; body.material.diffuse = w; body.name = "Body";
+            obj.volumes.push_back(body);
+            auto mid = make_sphere(vec3(0, s*0.65f, 0), s*0.25f, 16);
+            mid.noise_amount = 0.03f; mid.seed_offset = seed+1; mid.material.diffuse = w; mid.name = "Mid";
+            obj.volumes.push_back(mid);
+            auto head = make_sphere(vec3(0, s*1.0f, 0), s*0.18f, 14);
+            head.noise_amount = 0.03f; head.seed_offset = seed+2; head.material.diffuse = w; head.name = "Head";
+            obj.volumes.push_back(head);
+            auto nose = make_cone(vec3(0, s*1.0f, s*0.18f), s*0.03f, s*0.15f, 8);
+            nose.rotation.x = (float)M_PI*0.5f; nose.material.diffuse = vec4(1,0.5f,0,1); nose.name = "Nose";
+            obj.volumes.push_back(nose);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto eye = make_sphere(vec3(side*s*0.06f, s*1.05f, s*0.16f), s*0.025f, 8);
+                eye.material.diffuse = vec4(0.05f,0.05f,0.05f,1); eye.name = "Eye" + std::to_string(i);
+                obj.volumes.push_back(eye);
+            }
+            auto hat_brim = make_disc(vec3(0, s*1.18f, 0), s*0.22f, s*0.02f, 12);
+            hat_brim.material.diffuse = vec4(0.15f,0.1f,0.08f,1); hat_brim.name = "HatBrim";
+            obj.volumes.push_back(hat_brim);
+            auto hat_top = make_cylinder(vec3(0, s*1.32f, 0), s*0.14f, s*0.15f, 10);
+            hat_top.material.diffuse = vec4(0.15f,0.1f,0.08f,1); hat_top.name = "HatTop";
+            obj.volumes.push_back(hat_top);
+            auto scarf = make_torus(vec3(0, s*0.82f, 0), s*0.18f, s*0.03f, 16);
+            scarf.material.diffuse = vec4(0.8f,0.1f,0.1f,1); scarf.name = "Scarf";
+            obj.volumes.push_back(scarf);
+            return obj;
+        }
+    });
+
+    rules.push_back({"diamond", {"diamond", "diamant"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Diamond";
+            float s = sz;
+            auto top = make_cone(vec3(0, s*0.15f, 0), s*0.25f, s*0.35f, 8);
+            top.noise_amount = 0.02f; top.seed_offset = seed;
+            top.material.diffuse = col.w > 0 ? col : vec4(0.7f, 0.85f, 1.0f, 0.85f);
+            top.material.metallic = 0.1f; top.material.roughness = 0.02f;
+            top.name = "Top";
+            obj.volumes.push_back(top);
+            auto bot = make_cone(vec3(0, -s*0.1f, 0), s*0.25f, s*0.25f, 8);
+            bot.noise_amount = 0.02f; bot.seed_offset = seed+5;
+            bot.rotation.x = (float)M_PI;
+            bot.material.diffuse = col.w > 0 ? col : vec4(0.7f, 0.85f, 1.0f, 0.85f);
+            bot.material.metallic = 0.1f; bot.material.roughness = 0.02f;
+            bot.name = "Bottom";
+            obj.volumes.push_back(bot);
+            auto girdle = make_ring(vec3(0, 0, 0), s*0.22f, s*0.25f, 8);
+            girdle.noise_amount = 0.01f; girdle.seed_offset = seed+10;
+            girdle.material.diffuse = vec4(0.8f, 0.9f, 1.0f, 0.9f);
+            girdle.name = "Girdle";
+            obj.volumes.push_back(girdle);
+            return obj;
+        }
+    });
+
+    rules.push_back({"spiral", {"spiral", "spirale"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Spiral";
+            float s = sz;
+            for (int i = 0; i < 20; i++) {
+                float t = (float)i / 20.0f;
+                float angle = t * (float)M_PI * 6.0f;
+                float r = s * 0.1f + t * s * 0.3f;
+                float x = cosf(angle) * r;
+                float z = sinf(angle) * r;
+                float y = t * s * 0.8f - s*0.3f;
+                float sp = s * 0.04f * (1.0f - t * 0.5f);
+                auto bead = make_sphere(vec3(x, y, z), sp, 8);
+                bead.noise_amount = 0.05f; bead.seed_offset = seed + (float)i;
+                bead.material.diffuse = col.w > 0 ? col : vec4(0.5f + 0.5f*noise2d(seed+(float)i,0), 0.5f+0.5f*noise2d(seed+(float)i,1), 0.5f+0.5f*noise2d(seed+(float)i,2), 1);
+                bead.name = "Bead" + std::to_string(i);
+                obj.volumes.push_back(bead);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"dna", {"dna", "adn", "helix"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "DNA";
+            float s = sz;
+            for (int strand = 0; strand < 2; strand++) {
+                float offset = strand * (float)M_PI;
+                for (int i = 0; i < 16; i++) {
+                    float t = (float)i / 16.0f;
+                    float angle = t * (float)M_PI * 4.0f + offset;
+                    float x = cosf(angle) * s * 0.2f;
+                    float z = sinf(angle) * s * 0.2f;
+                    float y = t * s * 1.2f - s*0.6f;
+                    auto bead = make_sphere(vec3(x, y, z), s*0.035f, 8);
+                    bead.material.diffuse = strand == 0 ? vec4(0.2f,0.4f,0.9f,1) : vec4(0.9f,0.2f,0.2f,1);
+                    bead.seed_offset = seed + (float)(strand*16+i);
+                    bead.name = "Strand" + std::to_string(strand) + "_" + std::to_string(i);
+                    obj.volumes.push_back(bead);
+                }
+            }
+            for (int i = 0; i < 8; i++) {
+                float t = (float)i / 8.0f;
+                float angle = t * (float)M_PI * 4.0f;
+                float x1 = cosf(angle) * s * 0.2f;
+                float z1 = sinf(angle) * s * 0.2f;
+                float x2 = cosf(angle + (float)M_PI) * s * 0.2f;
+                float z2 = sinf(angle + (float)M_PI) * s * 0.2f;
+                float y = t * s * 1.2f - s*0.6f;
+                float dx = x2-x1, dz = z2-z1;
+                float len = sqrtf(dx*dx+dz*dz);
+                auto rung = make_cylinder(vec3((x1+x2)*0.5f, y, (z1+z2)*0.5f), s*0.015f, len, 6);
+                rung.rotation.y = atan2f(dz, dx);
+                rung.rotation.z = (float)M_PI*0.5f;
+                rung.material.diffuse = vec4(0.8f,0.8f,0.3f,1);
+                rung.seed_offset = seed + 100 + (float)i;
+                rung.name = "Rung" + std::to_string(i);
+                obj.volumes.push_back(rung);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"airplane", {"airplane", "avion", "plane", "jet"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Airplane";
+            float s = sz * 1.5f;
+            auto fuselage = make_cylinder(vec3(0, 0, 0), s*0.12f, s*1.2f, 14);
+            fuselage.noise_amount = 0.03f; fuselage.seed_offset = seed;
+            fuselage.rotation.z = (float)M_PI*0.5f;
+            fuselage.material.diffuse = col.w > 0 ? col : vec4(0.85f,0.87f,0.9f,1);
+            fuselage.name = "Fuselage";
+            obj.volumes.push_back(fuselage);
+            auto nose = make_cone(vec3(s*0.65f, 0, 0), s*0.12f, s*0.2f, 12);
+            nose.rotation.z = -(float)M_PI*0.5f;
+            nose.material.diffuse = vec4(0.7f,0.72f,0.75f,1); nose.name = "Nose";
+            obj.volumes.push_back(nose);
+            auto wing_l = make_box(vec3(0, -s*0.02f, -s*0.35f), vec3(s*0.5f, s*0.02f, s*0.3f));
+            wing_l.noise_amount = 0.02f; wing_l.seed_offset = seed+5;
+            wing_l.material.diffuse = vec4(0.8f,0.82f,0.85f,1); wing_l.name = "WingL";
+            obj.volumes.push_back(wing_l);
+            auto wing_r = make_box(vec3(0, -s*0.02f, s*0.35f), vec3(s*0.5f, s*0.02f, s*0.3f));
+            wing_r.noise_amount = 0.02f; wing_r.seed_offset = seed+6;
+            wing_r.material.diffuse = vec4(0.8f,0.82f,0.85f,1); wing_r.name = "WingR";
+            obj.volumes.push_back(wing_r);
+            auto tail_v = make_box(vec3(-s*0.55f, s*0.12f, 0), vec3(s*0.15f, s*0.15f, s*0.02f));
+            tail_v.material.diffuse = vec4(0.8f,0.82f,0.85f,1); tail_v.name = "TailV";
+            obj.volumes.push_back(tail_v);
+            auto tail_h = make_box(vec3(-s*0.55f, 0, 0), vec3(s*0.1f, s*0.02f, s*0.25f));
+            tail_h.material.diffuse = vec4(0.8f,0.82f,0.85f,1); tail_h.name = "TailH";
+            obj.volumes.push_back(tail_h);
+            auto eng_l = make_cylinder(vec3(-s*0.1f, -s*0.04f, -s*0.25f), s*0.04f, s*0.15f, 8);
+            eng_l.material.diffuse = vec4(0.5f,0.52f,0.55f,1); eng_l.name = "EngineL";
+            obj.volumes.push_back(eng_l);
+            auto eng_r = make_cylinder(vec3(-s*0.1f, -s*0.04f, s*0.25f), s*0.04f, s*0.15f, 8);
+            eng_r.material.diffuse = vec4(0.5f,0.52f,0.55f,1); eng_r.name = "EngineR";
+            obj.volumes.push_back(eng_r);
+            return obj;
+        }
+    });
+
+    rules.push_back({"boat", {"boat", "bateau", "ship", "voilier"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Boat";
+            float s = sz;
+            auto hull = make_box(vec3(0, 0, 0), vec3(s*1.2f, s*0.25f, s*0.5f));
+            hull.noise_amount = 0.04f; hull.seed_offset = seed;
+            hull.material.diffuse = col.w > 0 ? col : vec4(0.45f,0.3f,0.15f,1); hull.name = "Hull";
+            obj.volumes.push_back(hull);
+            auto bow = make_cone(vec3(s*0.65f, s*0.05f, 0), s*0.15f, s*0.3f, 8);
+            bow.rotation.z = -(float)M_PI*0.5f;
+            bow.material.diffuse = vec4(0.45f,0.3f,0.15f,1); bow.name = "Bow";
+            obj.volumes.push_back(bow);
+            auto mast = make_cylinder(vec3(0, s*0.6f, 0), s*0.02f, s*1.0f, 8);
+            mast.material.diffuse = vec4(0.4f,0.28f,0.12f,1); mast.name = "Mast";
+            obj.volumes.push_back(mast);
+            auto sail = make_box(vec3(s*0.1f, s*0.6f, 0), vec3(s*0.4f, s*0.5f, s*0.01f));
+            sail.noise_amount = 0.08f; sail.seed_offset = seed+10;
+            sail.material.diffuse = vec4(0.95f,0.93f,0.88f,1); sail.name = "Sail";
+            obj.volumes.push_back(sail);
+            return obj;
+        }
+    });
+
+    rules.push_back({"door", {"door", "porte"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Door";
+            float s = sz;
+            auto frame_l = make_box(vec3(-s*0.35f, s*0.5f, 0), vec3(s*0.06f, s*1.0f, s*0.06f));
+            frame_l.material.diffuse = vec4(0.35f,0.22f,0.1f,1); frame_l.name = "FrameL";
+            obj.volumes.push_back(frame_l);
+            auto frame_r = make_box(vec3(s*0.35f, s*0.5f, 0), vec3(s*0.06f, s*1.0f, s*0.06f));
+            frame_r.material.diffuse = vec4(0.35f,0.22f,0.1f,1); frame_r.name = "FrameR";
+            obj.volumes.push_back(frame_r);
+            auto frame_t = make_box(vec3(0, s*1.02f, 0), vec3(s*0.76f, s*0.06f, s*0.06f));
+            frame_t.material.diffuse = vec4(0.35f,0.22f,0.1f,1); frame_t.name = "FrameT";
+            obj.volumes.push_back(frame_t);
+            auto panel = make_box(vec3(0, s*0.48f, s*0.02f), vec3(s*0.62f, s*0.92f, s*0.04f));
+            panel.noise_amount = 0.03f; panel.seed_offset = seed;
+            panel.material.diffuse = col.w > 0 ? col : vec4(0.5f,0.32f,0.15f,1); panel.name = "Panel";
+            obj.volumes.push_back(panel);
+            auto handle = make_sphere(vec3(s*0.22f, s*0.48f, s*0.06f), s*0.03f, 8);
+            handle.material.diffuse = vec4(0.8f,0.7f,0.1f,1); handle.material.metallic = 0.9f;
+            handle.name = "Handle";
+            obj.volumes.push_back(handle);
+            return obj;
+        }
+    });
+
+    rules.push_back({"window", {"window", "fenetre"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Window";
+            float s = sz;
+            auto frame = make_box(vec3(0, s*0.4f, 0), vec3(s*0.8f, s*0.8f, s*0.06f));
+            frame.material.diffuse = vec4(0.35f,0.22f,0.1f,1); frame.name = "Frame";
+            obj.volumes.push_back(frame);
+            auto glass = make_box(vec3(0, s*0.4f, s*0.01f), vec3(s*0.68f, s*0.68f, s*0.02f));
+            glass.material.diffuse = vec4(0.6f,0.8f,1.0f,0.5f); glass.name = "Glass";
+            obj.volumes.push_back(glass);
+            auto bar_h = make_box(vec3(0, s*0.4f, s*0.02f), vec3(s*0.68f, s*0.03f, s*0.03f));
+            bar_h.material.diffuse = vec4(0.35f,0.22f,0.1f,1); bar_h.name = "BarH";
+            obj.volumes.push_back(bar_h);
+            auto bar_v = make_box(vec3(0, s*0.4f, s*0.02f), vec3(s*0.03f, s*0.68f, s*0.03f));
+            bar_v.material.diffuse = vec4(0.35f,0.22f,0.1f,1); bar_v.name = "BarV";
+            obj.volumes.push_back(bar_v);
+            return obj;
+        }
+    });
+
+    rules.push_back({"shelf", {"shelf", "etagere"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Shelf";
+            float s = sz;
+            for (int i = 0; i < 3; i++) {
+                float y = (float)i * s * 0.35f;
+                auto plank = make_box(vec3(0, y, 0), vec3(s*0.8f, s*0.03f, s*0.25f));
+                plank.noise_amount = 0.03f; plank.seed_offset = seed + (float)i;
+                plank.material.diffuse = col.w > 0 ? col : vec4(0.5f,0.32f,0.15f,1);
+                plank.name = "Plank" + std::to_string(i);
+                obj.volumes.push_back(plank);
+            }
+            auto side_l = make_box(vec3(-s*0.4f, s*0.35f, 0), vec3(s*0.03f, s*0.73f, s*0.25f));
+            side_l.material.diffuse = vec4(0.45f,0.28f,0.12f,1); side_l.name = "SideL";
+            obj.volumes.push_back(side_l);
+            auto side_r = make_box(vec3(s*0.4f, s*0.35f, 0), vec3(s*0.03f, s*0.73f, s*0.25f));
+            side_r.material.diffuse = vec4(0.45f,0.28f,0.12f,1); side_r.name = "SideR";
+            obj.volumes.push_back(side_r);
+            return obj;
+        }
+    });
+
+    rules.push_back({"lamp", {"lamp", "lumiere", "lampe", "light"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Lamp";
+            float s = sz;
+            auto base = make_disc(vec3(0, 0, 0), s*0.2f, s*0.04f, 12);
+            base.material.diffuse = vec4(0.3f,0.3f,0.32f,1); base.material.metallic = 0.8f; base.name = "Base";
+            obj.volumes.push_back(base);
+            auto pole = make_cylinder(vec3(0, s*0.4f, 0), s*0.025f, s*0.7f, 8);
+            pole.material.diffuse = vec4(0.4f,0.4f,0.42f,1); pole.material.metallic = 0.7f; pole.name = "Pole";
+            obj.volumes.push_back(pole);
+            auto shade = make_cone(vec3(0, s*0.85f, 0), s*0.2f, s*0.25f, 16);
+            shade.noise_amount = 0.03f; shade.seed_offset = seed;
+            shade.material.diffuse = col.w > 0 ? col : vec4(0.9f,0.85f,0.7f,1);
+            shade.name = "Shade";
+            obj.volumes.push_back(shade);
+            auto bulb = make_sphere(vec3(0, s*0.78f, 0), s*0.04f, 8);
+            bulb.material.diffuse = vec4(1,0.95f,0.7f,1); bulb.material.emission = vec4(0.8f,0.75f,0.3f,1);
+            bulb.name = "Bulb";
+            obj.volumes.push_back(bulb);
+            return obj;
+        }
+    });
+
+    rules.push_back({"flower", {"flower", "fleur", "rose"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Flower";
+            float s = sz;
+            auto stem = make_cylinder(vec3(0, s*0.15f, 0), s*0.015f, s*0.6f, 8);
+            stem.noise_amount = 0.06f; stem.seed_offset = seed;
+            stem.material.diffuse = vec4(0.2f,0.55f,0.15f,1); stem.name = "Stem";
+            obj.volumes.push_back(stem);
+            auto center = make_sphere(vec3(0, s*0.5f, 0), s*0.06f, 10);
+            center.material.diffuse = vec4(1.0f,0.85f,0.1f,1); center.name = "Center";
+            obj.volumes.push_back(center);
+            vec4 petal_col = col.w > 0 ? col : vec4(0.9f,0.2f,0.35f,1);
+            for (int i = 0; i < 6; i++) {
+                float angle = (float)M_PI * 2.0f * i / 6.0f;
+                float px = cosf(angle) * s * 0.1f;
+                float pz = sinf(angle) * s * 0.1f;
+                auto petal = make_sphere(vec3(px, s*0.5f, pz), s*0.05f, 8);
+                petal.scale = vec3(1.0f, 0.5f, 1.5f);
+                petal.rotation.y = angle;
+                petal.material.diffuse = petal_col;
+                petal.seed_offset = seed + (float)(i+1)*3;
+                petal.name = "Petal" + std::to_string(i);
+                obj.volumes.push_back(petal);
+            }
+            auto leaf = make_disc(vec3(s*0.08f, s*0.1f, 0), s*0.08f, s*0.01f, 8);
+            leaf.rotation.z = 0.4f;
+            leaf.material.diffuse = vec4(0.15f,0.5f,0.1f,1); leaf.name = "Leaf";
+            obj.volumes.push_back(leaf);
+            return obj;
+        }
+    });
+
+    rules.push_back({"bone", {"bone", "os"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Bone";
+            float s = sz;
+            auto shaft = make_cylinder(vec3(0, 0, 0), s*0.04f, s*0.6f, 8);
+            shaft.noise_amount = 0.03f; shaft.seed_offset = seed;
+            shaft.material.diffuse = vec4(0.92f,0.9f,0.82f,1); shaft.name = "Shaft";
+            obj.volumes.push_back(shaft);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto knob1 = make_sphere(vec3(side*s*0.32f, s*0.03f, 0), s*0.05f, 8);
+                knob1.material.diffuse = vec4(0.92f,0.9f,0.82f,1); knob1.name = "Knob" + std::to_string(i*2);
+                obj.volumes.push_back(knob1);
+                auto knob2 = make_sphere(vec3(side*s*0.32f, -s*0.03f, 0), s*0.05f, 8);
+                knob2.material.diffuse = vec4(0.92f,0.9f,0.82f,1); knob2.name = "Knob" + std::to_string(i*2+1);
+                obj.volumes.push_back(knob2);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"key", {"key", "cle"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Key";
+            float s = sz;
+            auto shaft = make_box(vec3(s*0.15f, 0, 0), vec3(s*0.5f, s*0.03f, s*0.02f));
+            shaft.material.diffuse = vec4(0.8f,0.7f,0.1f,1); shaft.material.metallic = 0.9f; shaft.name = "Shaft";
+            obj.volumes.push_back(shaft);
+            auto bow = make_torus(vec3(-s*0.1f, 0, 0), s*0.1f, s*0.02f, 12);
+            bow.material.diffuse = vec4(0.8f,0.7f,0.1f,1); bow.material.metallic = 0.9f; bow.name = "Bow";
+            obj.volumes.push_back(bow);
+            for (int i = 0; i < 3; i++) {
+                float x = s*0.3f + (float)i * s*0.08f;
+                auto tooth = make_box(vec3(x, -s*0.04f, 0), vec3(s*0.02f, s*0.05f, s*0.02f));
+                tooth.material.diffuse = vec4(0.8f,0.7f,0.1f,1); tooth.material.metallic = 0.9f;
+                tooth.name = "Tooth" + std::to_string(i);
+                obj.volumes.push_back(tooth);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"helmet", {"helmet", "casque"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Helmet";
+            float s = sz;
+            auto dome = make_hemisphere(vec3(0, s*0.15f, 0), s*0.35f, 18);
+            dome.noise_amount = 0.04f; dome.seed_offset = seed;
+            dome.material.diffuse = col.w > 0 ? col : vec4(0.5f,0.52f,0.55f,1);
+            dome.material.metallic = 0.7f; dome.name = "Dome";
+            obj.volumes.push_back(dome);
+            auto rim = make_ring(vec3(0, 0, 0), s*0.32f, s*0.38f, 16);
+            rim.material.diffuse = vec4(0.45f,0.47f,0.5f,1); rim.material.metallic = 0.8f; rim.name = "Rim";
+            obj.volumes.push_back(rim);
+            auto visor = make_disc(vec3(0, s*0.15f, s*0.28f), s*0.18f, s*0.01f, 12);
+            visor.rotation.x = 0.3f;
+            visor.material.diffuse = vec4(0.3f,0.5f,0.8f,0.6f); visor.name = "Visor";
+            obj.volumes.push_back(visor);
+            return obj;
+        }
+    });
+
+    rules.push_back({"battery", {"battery", "pile", "batterie"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Battery";
+            float s = sz;
+            auto body = make_cylinder(vec3(0, 0, 0), s*0.12f, s*0.5f, 12);
+            body.noise_amount = 0.02f; body.seed_offset = seed;
+            body.material.diffuse = col.w > 0 ? col : vec4(0.2f,0.6f,0.2f,1); body.name = "Body";
+            obj.volumes.push_back(body);
+            auto terminal = make_cylinder(vec3(0, s*0.28f, 0), s*0.04f, s*0.06f, 8);
+            terminal.material.diffuse = vec4(0.8f,0.8f,0.82f,1); terminal.material.metallic = 0.9f;
+            terminal.name = "Terminal";
+            obj.volumes.push_back(terminal);
+            auto stripe = make_ring(vec3(0, 0, 0), s*0.121f, s*0.13f, 12);
+            stripe.position.y = s*0.1f;
+            stripe.material.diffuse = vec4(0.1f,0.1f,0.1f,1); stripe.name = "Stripe";
+            obj.volumes.push_back(stripe);
+            return obj;
+        }
+    });
+
+    rules.push_back({"ice", {"ice", "cristal", "glacier", "glace", "crystal"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Ice";
+            float s = sz;
+            for (int i = 0; i < 5; i++) {
+                float x = fbm3d((float)i*5.0f+seed, 0, 0, 3) * s*0.2f;
+                float z = fbm3d(0, (float)i*5.0f+seed, 0, 3) * s*0.2f;
+                float h = s * (0.2f + 0.4f * noise2d(seed+(float)i, 200));
+                auto shard = make_cone(vec3(x, h*0.5f, z), s*0.05f + s*0.03f*noise2d(seed+(float)i,210), h, 6);
+                shard.noise_amount = 0.04f; shard.seed_offset = seed + (float)(i+1)*7;
+                shard.rotation.x = (noise2d(seed+(float)i,220)-0.5f)*0.3f;
+                shard.rotation.z = (noise2d(seed+(float)i,230)-0.5f)*0.3f;
+                shard.material.diffuse = vec4(0.6f,0.85f,1.0f,0.7f);
+                shard.material.roughness = 0.05f; shard.material.opacity = 0.7f;
+                shard.name = "Shard" + std::to_string(i);
+                obj.volumes.push_back(shard);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"pyramid", {"pyramide", "pyramid"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Pyramid";
+            float s = sz;
+            auto main = make_cone(vec3(0, s*0.4f, 0), s*0.7f, s*0.8f, 4);
+            main.noise_amount = 0.04f; main.seed_offset = seed; main.rotation.y = (float)M_PI*0.25f;
+            main.material.diffuse = col.w > 0 ? col : vec4(0.85f,0.78f,0.55f,1); main.name = "Main";
+            obj.volumes.push_back(main);
+            auto base = make_box(vec3(0, -s*0.01f, 0), vec3(s*1.42f, s*0.04f, s*1.42f));
+            base.material.diffuse = vec4(0.75f,0.68f,0.45f,1); base.name = "Base";
+            obj.volumes.push_back(base);
+            auto cap = make_sphere(vec3(0, s*0.82f, 0), s*0.03f, 8);
+            cap.material.diffuse = vec4(1.0f,0.84f,0.0f,1); cap.material.metallic = 0.9f;
+            cap.name = "Cap";
+            obj.volumes.push_back(cap);
+            return obj;
+        }
+    });
+
+    rules.push_back({"satellite", {"satellite", "sputnik"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Satellite";
+            float s = sz;
+            auto body = make_box(vec3(0, 0, 0), vec3(s*0.3f, s*0.25f, s*0.25f));
+            body.noise_amount = 0.02f; body.seed_offset = seed;
+            body.material.diffuse = vec4(0.7f,0.72f,0.75f,1); body.material.metallic = 0.6f; body.name = "Body";
+            obj.volumes.push_back(body);
+            auto panel_l = make_box(vec3(-s*0.5f, 0, 0), vec3(s*0.5f, s*0.02f, s*0.3f));
+            panel_l.material.diffuse = vec4(0.2f,0.3f,0.8f,1); panel_l.name = "PanelL";
+            obj.volumes.push_back(panel_l);
+            auto panel_r = make_box(vec3(s*0.5f, 0, 0), vec3(s*0.5f, s*0.02f, s*0.3f));
+            panel_r.material.diffuse = vec4(0.2f,0.3f,0.8f,1); panel_r.name = "PanelR";
+            obj.volumes.push_back(panel_r);
+            auto dish = make_hemisphere(vec3(0, s*0.2f, s*0.15f), s*0.1f, 10);
+            dish.material.diffuse = vec4(0.8f,0.8f,0.82f,1); dish.name = "Dish";
+            obj.volumes.push_back(dish);
+            auto antenna = make_cylinder(vec3(0, s*0.3f, s*0.15f), s*0.008f, s*0.15f, 6);
+            antenna.material.diffuse = vec4(0.6f,0.6f,0.62f,1); antenna.name = "Antenna";
+            obj.volumes.push_back(antenna);
+            return obj;
+        }
+    });
+
+    rules.push_back({"jewelry", {"jewelry", "bijou", "bague", "necklace"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Jewelry";
+            float s = sz;
+            auto ring = make_torus(vec3(0, 0, 0), s*0.2f, s*0.025f, 20);
+            ring.noise_amount = 0.01f; ring.seed_offset = seed;
+            ring.material.diffuse = vec4(1.0f,0.84f,0.0f,1); ring.material.metallic = 0.95f;
+            ring.material.roughness = 0.1f; ring.name = "Band";
+            obj.volumes.push_back(ring);
+            auto gem = make_sphere(vec3(0, s*0.2f, 0), s*0.06f, 12);
+            gem.material.diffuse = col.w > 0 ? col : vec4(0.2f,0.5f,0.9f,0.85f);
+            gem.material.roughness = 0.02f; gem.name = "Gem";
+            obj.volumes.push_back(gem);
+            auto setting = make_cylinder(vec3(0, s*0.1f, 0), s*0.03f, s*0.06f, 6);
+            setting.material.diffuse = vec4(1.0f,0.84f,0.0f,1); setting.material.metallic = 0.95f;
+            setting.name = "Setting";
+            obj.volumes.push_back(setting);
+            return obj;
+        }
+    });
+
+    rules.push_back({"throne", {"throne", "trone"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Throne";
+            float s = sz;
+            auto seat = make_box(vec3(0, s*0.45f, 0), vec3(s*0.6f, s*0.05f, s*0.5f));
+            seat.noise_amount = 0.03f; seat.seed_offset = seed;
+            seat.material.diffuse = vec4(0.6f,0.1f,0.1f,1); seat.name = "Seat";
+            obj.volumes.push_back(seat);
+            auto back = make_box(vec3(0, s*0.9f, -s*0.23f), vec3(s*0.6f, s*0.9f, s*0.05f));
+            back.noise_amount = 0.03f; back.seed_offset = seed+1;
+            back.material.diffuse = vec4(0.6f,0.1f,0.1f,1); back.name = "Back";
+            obj.volumes.push_back(back);
+            auto crown = make_cone(vec3(0, s*1.45f, -s*0.23f), s*0.35f, s*0.15f, 6);
+            crown.material.diffuse = vec4(1.0f,0.84f,0.0f,1); crown.material.metallic = 0.9f; crown.name = "Crown";
+            obj.volumes.push_back(crown);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto arm = make_box(vec3(side*s*0.35f, s*0.6f, 0), vec3(s*0.05f, s*0.2f, s*0.45f));
+                arm.material.diffuse = vec4(0.55f,0.08f,0.08f,1); arm.name = "Arm" + std::to_string(i);
+                obj.volumes.push_back(arm);
+                auto knob = make_sphere(vec3(side*s*0.35f, s*0.72f, s*0.22f), s*0.04f, 8);
+                knob.material.diffuse = vec4(1.0f,0.84f,0.0f,1); knob.material.metallic = 0.9f;
+                knob.name = "ArmKnob" + std::to_string(i);
+                obj.volumes.push_back(knob);
+            }
+            for (int i = 0; i < 4; i++) {
+                float lx = (i%2 == 0 ? -1.0f : 1.0f) * s*0.25f;
+                float lz = (i < 2 ? -1.0f : 1.0f) * s*0.18f;
+                auto leg = make_cylinder(vec3(lx, s*0.22f, lz), s*0.035f, s*0.45f, 8);
+                leg.material.diffuse = vec4(0.5f,0.35f,0.1f,1); leg.name = "Leg" + std::to_string(i);
+                obj.volumes.push_back(leg);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"altar", {"altar", "autel"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Altar";
+            float s = sz;
+            auto base = make_box(vec3(0, s*0.2f, 0), vec3(s*0.8f, s*0.4f, s*0.4f));
+            base.noise_amount = 0.04f; base.seed_offset = seed;
+            base.material.diffuse = vec4(0.55f,0.52f,0.48f,1); base.name = "Base";
+            obj.volumes.push_back(base);
+            auto top = make_box(vec3(0, s*0.42f, 0), vec3(s*0.85f, s*0.04f, s*0.45f));
+            top.material.diffuse = vec4(0.6f,0.57f,0.53f,1); top.name = "Top";
+            obj.volumes.push_back(top);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto candle = make_cylinder(vec3(side*s*0.3f, s*0.55f, 0), s*0.02f, s*0.15f, 8);
+                candle.material.diffuse = vec4(0.9f,0.88f,0.8f,1); candle.name = "Candle" + std::to_string(i);
+                obj.volumes.push_back(candle);
+                auto flame = make_cone(vec3(side*s*0.3f, s*0.65f, 0), s*0.015f, s*0.05f, 6);
+                flame.material.diffuse = vec4(1,0.8f,0.1f,1); flame.material.emission = vec4(0.8f,0.6f,0.05f,1);
+                flame.name = "Flame" + std::to_string(i);
+                obj.volumes.push_back(flame);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"campfire", {"campfire", "feu de camp", "bonfire"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Campfire";
+            float s = sz;
+            for (int i = 0; i < 4; i++) {
+                float angle = (float)M_PI * 2.0f * i / 4.0f + seed * 0.1f;
+                auto log = make_cylinder(vec3(cosf(angle)*s*0.12f, s*0.04f, sinf(angle)*s*0.12f), s*0.03f, s*0.35f, 8);
+                log.rotation.z = 0.3f; log.rotation.y = angle;
+                log.noise_amount = 0.08f; log.seed_offset = seed + (float)i;
+                log.material.diffuse = vec4(0.35f,0.2f,0.08f,1); log.name = "Log" + std::to_string(i);
+                obj.volumes.push_back(log);
+            }
+            auto core = make_sphere(vec3(0, s*0.15f, 0), s*0.08f, 10);
+            core.noise_amount = 0.2f; core.noise_scale = 4.0f; core.seed_offset = seed + 20;
+            core.material.diffuse = vec4(1,0.8f,0.1f,1); core.material.emission = vec4(0.9f,0.6f,0.05f,1);
+            core.name = "Core";
+            obj.volumes.push_back(core);
+            auto flame = make_cone(vec3(0, s*0.3f, 0), s*0.1f, s*0.35f, 10);
+            flame.noise_amount = 0.25f; flame.noise_scale = 3.0f; flame.seed_offset = seed + 25;
+            flame.material.diffuse = vec4(1,0.4f,0.05f,1); flame.material.emission = vec4(0.8f,0.3f,0,1);
+            flame.material.opacity = 0.85f; flame.name = "Flame";
+            obj.volumes.push_back(flame);
+            return obj;
+        }
+    });
+
+    rules.push_back({"crate", {"crate", "caisse"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Crate";
+            float s = sz;
+            auto box = make_box(vec3(0, s*0.3f, 0), vec3(s*0.6f, s*0.6f, s*0.6f));
+            box.noise_amount = 0.05f; box.seed_offset = seed;
+            box.material.diffuse = col.w > 0 ? col : vec4(0.55f,0.38f,0.18f,1); box.name = "Box";
+            obj.volumes.push_back(box);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto plank = make_box(vec3(0, s*0.3f, side*s*0.301f), vec3(s*0.55f, s*0.04f, s*0.01f));
+                plank.material.diffuse = vec4(0.45f,0.3f,0.12f,1); plank.name = "Plank" + std::to_string(i);
+                obj.volumes.push_back(plank);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"barrel", {"barrel", "tonneau"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Barrel";
+            float s = sz;
+            auto body = make_cylinder(vec3(0, s*0.3f, 0), s*0.22f, s*0.6f, 16);
+            body.noise_amount = 0.03f; body.seed_offset = seed;
+            body.material.diffuse = vec4(0.5f,0.32f,0.12f,1); body.name = "Body";
+            obj.volumes.push_back(body);
+            for (int i = 0; i < 2; i++) {
+                float y = s*0.15f + (float)i * s*0.3f;
+                auto band = make_torus(vec3(0, y, 0), s*0.225f, s*0.012f, 16);
+                band.material.diffuse = vec4(0.3f,0.3f,0.32f,1); band.material.metallic = 0.8f;
+                band.name = "Band" + std::to_string(i);
+                obj.volumes.push_back(band);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"bench", {"bench", "banc"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Bench";
+            float s = sz;
+            auto seat = make_box(vec3(0, s*0.4f, 0), vec3(s*0.8f, s*0.04f, s*0.3f));
+            seat.noise_amount = 0.03f; seat.seed_offset = seed;
+            seat.material.diffuse = col.w > 0 ? col : vec4(0.5f,0.32f,0.15f,1); seat.name = "Seat";
+            obj.volumes.push_back(seat);
+            auto back = make_box(vec3(0, s*0.65f, -s*0.13f), vec3(s*0.8f, s*0.45f, s*0.03f));
+            back.material.diffuse = vec4(0.48f,0.3f,0.13f,1); back.name = "Back";
+            obj.volumes.push_back(back);
+            for (int i = 0; i < 4; i++) {
+                float lx = (i%2 == 0 ? -1.0f : 1.0f) * s*0.32f;
+                float lz = (i < 2 ? -1.0f : 1.0f) * s*0.1f;
+                auto leg = make_cylinder(vec3(lx, s*0.19f, lz), s*0.025f, s*0.38f, 8);
+                leg.material.diffuse = vec4(0.35f,0.35f,0.37f,1); leg.material.metallic = 0.6f;
+                leg.name = "Leg" + std::to_string(i);
+                obj.volumes.push_back(leg);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"fountain", {"fountain", "fontaine"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Fountain";
+            float s = sz;
+            auto basin = make_cylinder(vec3(0, s*0.1f, 0), s*0.4f, s*0.2f, 16);
+            basin.noise_amount = 0.03f; basin.seed_offset = seed;
+            basin.material.diffuse = vec4(0.6f,0.57f,0.53f,1); basin.name = "Basin";
+            obj.volumes.push_back(basin);
+            auto water = make_disc(vec3(0, s*0.18f, 0), s*0.38f, s*0.02f, 16);
+            water.material.diffuse = vec4(0.2f,0.5f,0.9f,0.7f); water.name = "Water";
+            obj.volumes.push_back(water);
+            auto pillar = make_cylinder(vec3(0, s*0.45f, 0), s*0.04f, s*0.5f, 8);
+            pillar.material.diffuse = vec4(0.55f,0.52f,0.48f,1); pillar.name = "Pillar";
+            obj.volumes.push_back(pillar);
+            auto jet = make_cylinder(vec3(0, s*0.75f, 0), s*0.02f, s*0.2f, 6);
+            jet.noise_amount = 0.15f; jet.seed_offset = seed + 10;
+            jet.material.diffuse = vec4(0.4f,0.7f,1.0f,0.6f); jet.material.emission = vec4(0.1f,0.2f,0.4f,0.3f);
+            jet.name = "Jet";
+            obj.volumes.push_back(jet);
+            return obj;
+        }
+    });
+
+    rules.push_back({"cart", {"cart", "chariot", "wagon"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Cart";
+            float s = sz;
+            auto body = make_box(vec3(0, s*0.3f, 0), vec3(s*0.7f, s*0.3f, s*0.45f));
+            body.noise_amount = 0.04f; body.seed_offset = seed;
+            body.material.diffuse = col.w > 0 ? col : vec4(0.5f,0.32f,0.15f,1); body.name = "Body";
+            obj.volumes.push_back(body);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto wheel = make_torus(vec3(side*s*0.28f, s*0.08f, 0), s*0.12f, s*0.03f, 12);
+                wheel.rotation.z = (float)M_PI*0.5f;
+                wheel.material.diffuse = vec4(0.35f,0.25f,0.1f,1); wheel.name = "Wheel" + std::to_string(i);
+                obj.volumes.push_back(wheel);
+            }
+            auto handle = make_cylinder(vec3(s*0.5f, s*0.35f, 0), s*0.02f, s*0.5f, 8);
+            handle.rotation.z = 0.3f;
+            handle.material.diffuse = vec4(0.4f,0.28f,0.12f,1); handle.name = "Handle";
+            obj.volumes.push_back(handle);
+            return obj;
+        }
+    });
+
+    rules.push_back({"lantern", {"lantern", "lanterne"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Lantern";
+            float s = sz;
+            auto frame = make_box(vec3(0, s*0.35f, 0), vec3(s*0.2f, s*0.5f, s*0.2f));
+            frame.noise_amount = 0.02f; frame.seed_offset = seed;
+            frame.material.diffuse = vec4(0.3f,0.3f,0.32f,1); frame.material.metallic = 0.7f; frame.name = "Frame";
+            obj.volumes.push_back(frame);
+            auto glass = make_box(vec3(0, s*0.35f, 0), vec3(s*0.16f, s*0.4f, s*0.16f));
+            glass.material.diffuse = vec4(1.0f,0.9f,0.6f,0.4f); glass.name = "Glass";
+            obj.volumes.push_back(glass);
+            auto flame = make_cone(vec3(0, s*0.35f, 0), s*0.025f, s*0.1f, 6);
+            flame.material.diffuse = vec4(1,0.8f,0.1f,1); flame.material.emission = vec4(0.8f,0.6f,0.05f,1);
+            flame.name = "Flame";
+            obj.volumes.push_back(flame);
+            auto top = make_cone(vec3(0, s*0.65f, 0), s*0.12f, s*0.1f, 8);
+            top.material.diffuse = vec4(0.3f,0.3f,0.32f,1); top.material.metallic = 0.7f; top.name = "Top";
+            obj.volumes.push_back(top);
+            auto handle = make_torus(vec3(0, s*0.72f, 0), s*0.06f, s*0.01f, 10);
+            handle.rotation.x = (float)M_PI*0.5f;
+            handle.material.diffuse = vec4(0.35f,0.35f,0.37f,1); handle.material.metallic = 0.8f;
+            handle.name = "Handle";
+            obj.volumes.push_back(handle);
+            return obj;
+        }
+    });
+
+    rules.push_back({"gun", {"gun", "pistolet", "pistol", "blaster"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Gun";
+            float s = sz;
+            auto barrel = make_box(vec3(s*0.15f, s*0.05f, 0), vec3(s*0.5f, s*0.05f, s*0.04f));
+            barrel.material.diffuse = vec4(0.25f,0.25f,0.27f,1); barrel.material.metallic = 0.8f; barrel.name = "Barrel";
+            obj.volumes.push_back(barrel);
+            auto body = make_box(vec3(0, -s*0.02f, 0), vec3(s*0.35f, s*0.08f, s*0.05f));
+            body.material.diffuse = vec4(0.2f,0.2f,0.22f,1); body.material.metallic = 0.7f; body.name = "Body";
+            obj.volumes.push_back(body);
+            auto grip = make_box(vec3(-s*0.05f, -s*0.15f, 0), vec3(s*0.06f, s*0.18f, s*0.05f));
+            grip.rotation.z = 0.2f;
+            grip.material.diffuse = vec4(0.35f,0.25f,0.12f,1); grip.name = "Grip";
+            obj.volumes.push_back(grip);
+            auto trigger = make_box(vec3(-s*0.02f, -s*0.06f, 0), vec3(s*0.02f, s*0.05f, s*0.02f));
+            trigger.material.diffuse = vec4(0.3f,0.3f,0.32f,1); trigger.material.metallic = 0.8f; trigger.name = "Trigger";
+            obj.volumes.push_back(trigger);
+            auto sight = make_box(vec3(s*0.3f, s*0.09f, 0), vec3(s*0.02f, s*0.02f, s*0.02f));
+            sight.material.diffuse = vec4(0.2f,0.2f,0.22f,1); sight.name = "Sight";
+            obj.volumes.push_back(sight);
+            return obj;
+        }
+    });
+
+    rules.push_back({"pistol", {"pistol", "gun"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Pistol";
+            float s = sz;
+            auto slide = make_box(vec3(s*0.1f, s*0.04f, 0), vec3(s*0.4f, s*0.06f, s*0.04f));
+            slide.material.diffuse = vec4(0.22f,0.22f,0.24f,1); slide.material.metallic = 0.85f; slide.name = "Slide";
+            obj.volumes.push_back(slide);
+            auto frame = make_box(vec3(0, -s*0.02f, 0), vec3(s*0.3f, s*0.05f, s*0.045f));
+            frame.material.diffuse = vec4(0.18f,0.18f,0.2f,1); frame.material.metallic = 0.7f; frame.name = "Frame";
+            obj.volumes.push_back(frame);
+            auto grip = make_box(vec3(-s*0.04f, -s*0.14f, 0), vec3(s*0.06f, s*0.16f, s*0.045f));
+            grip.rotation.z = 0.2f;
+            grip.material.diffuse = vec4(0.3f,0.28f,0.25f,1); grip.name = "Grip";
+            obj.volumes.push_back(grip);
+            auto trigger_guard = make_torus(vec3(-s*0.02f, -s*0.06f, 0), s*0.04f, s*0.005f, 8);
+            trigger_guard.rotation.x = (float)M_PI*0.5f;
+            trigger_guard.material.diffuse = vec4(0.22f,0.22f,0.24f,1); trigger_guard.material.metallic = 0.8f;
+            trigger_guard.name = "TriggerGuard";
+            obj.volumes.push_back(trigger_guard);
+            return obj;
+        }
+    });
+
+    rules.push_back({"turret", {"turret", "tourelle"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Turret";
+            float s = sz;
+            auto base = make_cylinder(vec3(0, s*0.1f, 0), s*0.3f, s*0.2f, 12);
+            base.noise_amount = 0.03f; base.seed_offset = seed;
+            base.material.diffuse = vec4(0.4f,0.42f,0.45f,1); base.material.metallic = 0.7f; base.name = "Base";
+            obj.volumes.push_back(base);
+            auto housing = make_box(vec3(0, s*0.35f, 0), vec3(s*0.25f, s*0.25f, s*0.25f));
+            housing.noise_amount = 0.03f; housing.seed_offset = seed+1;
+            housing.material.diffuse = vec4(0.45f,0.47f,0.5f,1); housing.material.metallic = 0.6f; housing.name = "Housing";
+            obj.volumes.push_back(housing);
+            auto barrel1 = make_cylinder(vec3(s*0.25f, s*0.38f, s*0.05f), s*0.03f, s*0.4f, 8);
+            barrel1.rotation.z = (float)M_PI*0.5f;
+            barrel1.material.diffuse = vec4(0.3f,0.3f,0.32f,1); barrel1.material.metallic = 0.9f; barrel1.name = "Barrel1";
+            obj.volumes.push_back(barrel1);
+            auto barrel2 = make_cylinder(vec3(s*0.25f, s*0.38f, -s*0.05f), s*0.03f, s*0.4f, 8);
+            barrel2.rotation.z = (float)M_PI*0.5f;
+            barrel2.material.diffuse = vec4(0.3f,0.3f,0.32f,1); barrel2.material.metallic = 0.9f; barrel2.name = "Barrel2";
+            obj.volumes.push_back(barrel2);
+            auto eye = make_sphere(vec3(s*0.13f, s*0.4f, 0), s*0.04f, 8);
+            eye.material.diffuse = vec4(1,0.1f,0.1f,1); eye.material.emission = vec4(0.8f,0.05f,0.05f,1);
+            eye.name = "Eye";
+            obj.volumes.push_back(eye);
+            return obj;
+        }
+    });
+
+    rules.push_back({"coral", {"coral", "corail"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Coral";
+            float s = sz;
+            for (int i = 0; i < 7; i++) {
+                float x = fbm3d((float)i*4.0f+seed, 0, 0, 3) * s*0.25f;
+                float z = fbm3d(0, (float)i*4.0f+seed, 0, 3) * s*0.25f;
+                float h = s * (0.15f + 0.35f * noise2d(seed+(float)i, 300));
+                auto branch = make_cylinder(vec3(x, h*0.5f, z), s*0.02f + s*0.015f*noise2d(seed+(float)i,310), h, 6);
+                branch.noise_amount = 0.15f; branch.seed_offset = seed + (float)(i+1)*5;
+                branch.rotation.x = (noise2d(seed+(float)i,320)-0.5f)*0.4f;
+                branch.rotation.z = (noise2d(seed+(float)i,330)-0.5f)*0.4f;
+                vec4 c = col.w > 0 ? col : vec4(0.9f, 0.3f+0.4f*noise2d(seed+(float)i,340), 0.3f, 1);
+                branch.material.diffuse = c; branch.name = "Branch" + std::to_string(i);
+                obj.volumes.push_back(branch);
+                auto tip = make_sphere(vec3(x, h, z), s*0.025f, 6);
+                tip.material.diffuse = c; tip.name = "Tip" + std::to_string(i);
+                obj.volumes.push_back(tip);
+            }
+            auto base = make_sphere(vec3(0, -s*0.02f, 0), s*0.15f, 8);
+            base.noise_amount = 0.12f; base.scale = vec3(2.0f, 0.3f, 2.0f);
+            base.seed_offset = seed + 50;
+            base.material.diffuse = vec4(0.6f,0.55f,0.5f,1); base.name = "Base";
+            obj.volumes.push_back(base);
+            return obj;
+        }
+    });
+
+    rules.push_back({"butterfly", {"butterfly", "papillon"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Butterfly";
+            float s = sz;
+            auto body = make_capsule(vec3(0, 0, 0), s*0.03f, s*0.2f, 8);
+            body.rotation.z = (float)M_PI*0.5f;
+            body.material.diffuse = vec4(0.2f,0.15f,0.1f,1); body.name = "Body";
+            obj.volumes.push_back(body);
+            auto head = make_sphere(vec3(s*0.12f, 0, 0), s*0.04f, 8);
+            head.material.diffuse = vec4(0.2f,0.15f,0.1f,1); head.name = "Head";
+            obj.volumes.push_back(head);
+            vec4 wc = col.w > 0 ? col : vec4(0.9f,0.4f,0.1f,1);
+            for (int i = 0; i < 4; i++) {
+                float side = i%2 == 0 ? -1.0f : 1.0f;
+                float front = i < 2 ? 1.0f : -1.0f;
+                float wx = front * s*0.05f;
+                float wz = side * s*0.2f;
+                float wy = front * s*0.05f;
+                auto wing = make_disc(vec3(wx, wy, wz), s*0.12f, s*0.005f, 10);
+                wing.scale = vec3(1.0f, 1.0f, 0.7f);
+                wing.rotation.y = side * 0.3f;
+                wing.noise_amount = 0.06f; wing.seed_offset = seed + (float)(i+1)*5;
+                wing.material.diffuse = wc;
+                wing.material.emission = vec4(wc.x*0.2f, wc.y*0.2f, wc.z*0.2f, 1);
+                wing.name = "Wing" + std::to_string(i);
+                obj.volumes.push_back(wing);
+            }
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto antenna = make_cylinder(vec3(s*0.12f, s*0.04f, side*s*0.02f), s*0.003f, s*0.1f, 4);
+                antenna.rotation.z = side * 0.5f;
+                antenna.material.diffuse = vec4(0.2f,0.15f,0.1f,1); antenna.name = "Antenna" + std::to_string(i);
+                obj.volumes.push_back(antenna);
+                auto tip = make_sphere(vec3(s*0.17f, s*0.08f, side*s*0.06f), s*0.008f, 6);
+                tip.material.diffuse = vec4(0.2f,0.15f,0.1f,1); tip.name = "AntennaTip" + std::to_string(i);
+                obj.volumes.push_back(tip);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"cat", {"cat", "chat"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Cat";
+            float s = sz;
+            auto body = make_capsule(vec3(0, s*0.2f, 0), s*0.12f, s*0.3f, 12);
+            body.noise_amount = 0.04f; body.seed_offset = seed;
+            body.material.diffuse = col.w > 0 ? col : vec4(0.7f,0.55f,0.3f,1); body.name = "Body";
+            obj.volumes.push_back(body);
+            auto head = make_sphere(vec3(s*0.2f, s*0.4f, 0), s*0.1f, 12);
+            head.noise_amount = 0.03f; head.seed_offset = seed+1;
+            head.material.diffuse = col.w > 0 ? col : vec4(0.7f,0.55f,0.3f,1); head.name = "Head";
+            obj.volumes.push_back(head);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto ear = make_cone(vec3(s*0.2f, s*0.52f, side*s*0.06f), s*0.03f, s*0.06f, 6);
+                ear.material.diffuse = vec4(0.7f,0.55f,0.3f,1); ear.name = "Ear" + std::to_string(i);
+                obj.volumes.push_back(ear);
+                auto eye = make_sphere(vec3(s*0.28f, s*0.42f, side*s*0.04f), s*0.02f, 8);
+                eye.material.diffuse = vec4(0.2f,0.8f,0.2f,1); eye.name = "Eye" + std::to_string(i);
+                obj.volumes.push_back(eye);
+            }
+            auto nose = make_sphere(vec3(s*0.3f, s*0.38f, 0), s*0.012f, 6);
+            nose.material.diffuse = vec4(0.9f,0.4f,0.4f,1); nose.name = "Nose";
+            obj.volumes.push_back(nose);
+            auto tail = make_cylinder(vec3(-s*0.18f, s*0.35f, 0), s*0.02f, s*0.25f, 6);
+            tail.noise_amount = 0.12f; tail.seed_offset = seed+10;
+            tail.rotation.z = -0.8f;
+            tail.material.diffuse = col.w > 0 ? col : vec4(0.7f,0.55f,0.3f,1); tail.name = "Tail";
+            obj.volumes.push_back(tail);
+            for (int i = 0; i < 4; i++) {
+                float fx = (i%2 == 0 ? 1.0f : -1.0f) * s*0.06f;
+                float fz = (i < 2 ? 1.0f : -1.0f) * s*0.06f;
+                auto leg = make_cylinder(vec3(fx, s*0.05f, fz), s*0.025f, s*0.2f, 6);
+                leg.material.diffuse = col.w > 0 ? col : vec4(0.65f,0.5f,0.28f,1); leg.name = "Leg" + std::to_string(i);
+                obj.volumes.push_back(leg);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"dog", {"dog", "chien"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Dog";
+            float s = sz;
+            auto body = make_capsule(vec3(0, s*0.25f, 0), s*0.12f, s*0.35f, 12);
+            body.noise_amount = 0.04f; body.seed_offset = seed;
+            body.material.diffuse = col.w > 0 ? col : vec4(0.55f,0.38f,0.2f,1); body.name = "Body";
+            obj.volumes.push_back(body);
+            auto head = make_box(vec3(s*0.25f, s*0.4f, 0), vec3(s*0.15f, s*0.12f, s*0.12f));
+            head.noise_amount = 0.03f; head.seed_offset = seed+1;
+            head.material.diffuse = col.w > 0 ? col : vec4(0.55f,0.38f,0.2f,1); head.name = "Head";
+            obj.volumes.push_back(head);
+            auto snout = make_box(vec3(s*0.35f, s*0.37f, 0), vec3(s*0.08f, s*0.06f, s*0.06f));
+            snout.material.diffuse = vec4(0.5f,0.35f,0.18f,1); snout.name = "Snout";
+            obj.volumes.push_back(snout);
+            auto nose = make_sphere(vec3(s*0.4f, s*0.38f, 0), s*0.018f, 6);
+            nose.material.diffuse = vec4(0.1f,0.1f,0.1f,1); nose.name = "Nose";
+            obj.volumes.push_back(nose);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto ear = make_sphere(vec3(s*0.22f, s*0.48f, side*s*0.07f), s*0.04f, 8);
+                ear.scale = vec3(0.8f, 1.2f, 0.5f);
+                ear.material.diffuse = vec4(0.45f,0.3f,0.15f,1); ear.name = "Ear" + std::to_string(i);
+                obj.volumes.push_back(ear);
+                auto eye = make_sphere(vec3(s*0.32f, s*0.43f, side*s*0.04f), s*0.018f, 8);
+                eye.material.diffuse = vec4(0.15f,0.1f,0.05f,1); eye.name = "Eye" + std::to_string(i);
+                obj.volumes.push_back(eye);
+            }
+            auto tail = make_cylinder(vec3(-s*0.2f, s*0.4f, 0), s*0.018f, s*0.2f, 6);
+            tail.noise_amount = 0.1f; tail.seed_offset = seed+10;
+            tail.rotation.z = -1.0f;
+            tail.material.diffuse = col.w > 0 ? col : vec4(0.55f,0.38f,0.2f,1); tail.name = "Tail";
+            obj.volumes.push_back(tail);
+            for (int i = 0; i < 4; i++) {
+                float fx = (i%2 == 0 ? 1.0f : -1.0f) * s*0.06f;
+                float fz = (i < 2 ? 1.0f : -1.0f) * s*0.06f;
+                auto leg = make_cylinder(vec3(fx, s*0.08f, fz), s*0.028f, s*0.25f, 6);
+                leg.material.diffuse = col.w > 0 ? col : vec4(0.5f,0.35f,0.18f,1); leg.name = "Leg" + std::to_string(i);
+                obj.volumes.push_back(leg);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"bird", {"bird", "oiseau"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Bird";
+            float s = sz;
+            auto body = make_sphere(vec3(0, 0, 0), s*0.15f, 14);
+            body.noise_amount = 0.04f; body.seed_offset = seed;
+            body.scale = vec3(1.2f, 0.9f, 1.0f);
+            body.material.diffuse = col.w > 0 ? col : vec4(0.3f,0.5f,0.8f,1); body.name = "Body";
+            obj.volumes.push_back(body);
+            auto head = make_sphere(vec3(s*0.18f, s*0.12f, 0), s*0.08f, 10);
+            head.material.diffuse = col.w > 0 ? col : vec4(0.3f,0.5f,0.8f,1); head.name = "Head";
+            obj.volumes.push_back(head);
+            auto beak = make_cone(vec3(s*0.28f, s*0.1f, 0), s*0.02f, s*0.06f, 6);
+            beak.rotation.z = -(float)M_PI*0.5f;
+            beak.material.diffuse = vec4(0.9f,0.7f,0.1f,1); beak.name = "Beak";
+            obj.volumes.push_back(beak);
+            auto eye = make_sphere(vec3(s*0.24f, s*0.15f, s*0.03f), s*0.012f, 6);
+            eye.material.diffuse = vec4(0.05f,0.05f,0.05f,1); eye.name = "Eye";
+            obj.volumes.push_back(eye);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto wing = make_disc(vec3(-s*0.02f, s*0.05f, side*s*0.18f), s*0.15f, s*0.005f, 10);
+                wing.scale = vec3(1.3f, 0.7f, 1.0f);
+                wing.rotation.x = side * 0.2f;
+                wing.noise_amount = 0.06f; wing.seed_offset = seed + (float)(i+1)*5;
+                wing.material.diffuse = col.w > 0 ? col : vec4(0.25f,0.45f,0.75f,1);
+                wing.name = "Wing" + std::to_string(i);
+                obj.volumes.push_back(wing);
+            }
+            auto tail = make_cone(vec3(-s*0.2f, s*0.05f, 0), s*0.04f, s*0.12f, 6);
+            tail.rotation.z = (float)M_PI*0.5f;
+            tail.material.diffuse = col.w > 0 ? col : vec4(0.25f,0.45f,0.75f,1); tail.name = "Tail";
+            obj.volumes.push_back(tail);
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0f : 1.0f;
+                auto leg = make_cylinder(vec3(side*s*0.04f, -s*0.15f, 0), s*0.01f, s*0.1f, 4);
+                leg.material.diffuse = vec4(0.8f,0.6f,0.2f,1); leg.name = "Leg" + std::to_string(i);
+                obj.volumes.push_back(leg);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"stump", {"stump", "souche"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Stump";
+            float s = sz;
+            auto trunk = make_cylinder(vec3(0, s*0.2f, 0), s*0.2f, s*0.4f, 14);
+            trunk.noise_amount = 0.08f; trunk.noise_scale = 3.0f; trunk.seed_offset = seed;
+            trunk.material.diffuse = vec4(0.38f,0.24f,0.09f,1); trunk.name = "Trunk";
+            obj.volumes.push_back(trunk);
+            auto top = make_disc(vec3(0, s*0.41f, 0), s*0.2f, s*0.02f, 14);
+            top.material.diffuse = vec4(0.55f,0.4f,0.2f,1); top.name = "Top";
+            obj.volumes.push_back(top);
+            for (int i = 0; i < 3; i++) {
+                float angle = (float)M_PI * 2.0f * i / 3.0f + seed * 0.1f;
+                auto root = make_sphere(vec3(cosf(angle)*s*0.22f, -s*0.02f, sinf(angle)*s*0.22f), s*0.06f, 6);
+                root.scale = vec3(1.5f, 0.4f, 1.5f);
+                root.noise_amount = 0.1f; root.seed_offset = seed + (float)(i+1)*5;
+                root.material.diffuse = vec4(0.35f,0.22f,0.08f,1); root.name = "Root" + std::to_string(i);
+                obj.volumes.push_back(root);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"wall", {"wall", "mur"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Wall";
+            float s = sz;
+            auto wall = make_box(vec3(0, s*0.4f, 0), vec3(s*1.5f, s*0.8f, s*0.15f));
+            wall.noise_amount = 0.05f; wall.noise_scale = 3.0f; wall.seed_offset = seed;
+            wall.material.diffuse = col.w > 0 ? col : vec4(0.6f,0.55f,0.5f,1); wall.name = "Wall";
+            obj.volumes.push_back(wall);
+            return obj;
+        }
+    });
+
+    rules.push_back({"grave", {"grave", "tombe", "tombstone"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Grave";
+            float s = sz;
+            auto stone = make_box(vec3(0, s*0.35f, 0), vec3(s*0.35f, s*0.7f, s*0.08f));
+            stone.noise_amount = 0.04f; stone.seed_offset = seed;
+            stone.material.diffuse = vec4(0.5f,0.48f,0.45f,1); stone.name = "Stone";
+            obj.volumes.push_back(stone);
+            auto top = make_hemisphere(vec3(0, s*0.72f, 0), s*0.175f, 10);
+            top.rotation.z = (float)M_PI*0.5f;
+            top.material.diffuse = vec4(0.5f,0.48f,0.45f,1); top.name = "Top";
+            obj.volumes.push_back(top);
+            auto cross_h = make_box(vec3(0, s*0.55f, s*0.045f), vec3(s*0.15f, s*0.03f, s*0.03f));
+            cross_h.material.diffuse = vec4(0.45f,0.43f,0.4f,1); cross_h.name = "CrossH";
+            obj.volumes.push_back(cross_h);
+            auto cross_v = make_box(vec3(0, s*0.6f, s*0.045f), vec3(s*0.03f, s*0.2f, s*0.03f));
+            cross_v.material.diffuse = vec4(0.45f,0.43f,0.4f,1); cross_v.name = "CrossV";
+            obj.volumes.push_back(cross_v);
+            auto mound = make_disc(vec3(0, s*0.02f, s*0.1f), s*0.25f, s*0.08f, 10);
+            mound.scale = vec3(1.5f, 0.5f, 1.0f);
+            mound.material.diffuse = vec4(0.35f,0.3f,0.2f,1); mound.name = "Mound";
+            obj.volumes.push_back(mound);
+            return obj;
+        }
+    });
+
+    rules.push_back({"flag", {"flag", "drapeau"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Flag";
+            float s = sz;
+            auto pole = make_cylinder(vec3(-s*0.3f, s*0.4f, 0), s*0.015f, s*1.0f, 8);
+            pole.material.diffuse = vec4(0.5f,0.4f,0.2f,1); pole.name = "Pole";
+            obj.volumes.push_back(pole);
+            auto cloth = make_box(vec3(s*0.05f, s*0.65f, 0), vec3(s*0.5f, s*0.35f, s*0.01f));
+            cloth.noise_amount = 0.1f; cloth.noise_scale = 2.5f; cloth.seed_offset = seed;
+            cloth.material.diffuse = col.w > 0 ? col : vec4(0.8f,0.15f,0.1f,1); cloth.name = "Cloth";
+            obj.volumes.push_back(cloth);
+            auto finial = make_sphere(vec3(-s*0.3f, s*0.92f, 0), s*0.025f, 8);
+            finial.material.diffuse = vec4(1.0f,0.84f,0.0f,1); finial.material.metallic = 0.9f;
+            finial.name = "Finial";
+            obj.volumes.push_back(finial);
+            return obj;
+        }
+    });
+
+    rules.push_back({"bookshelf", {"bookshelf", "bibliotheque"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Bookshelf";
+            float s = sz;
+            auto back = make_box(vec3(0, s*0.5f, -s*0.12f), vec3(s*0.8f, s*1.0f, s*0.02f));
+            back.material.diffuse = vec4(0.45f,0.3f,0.13f,1); back.name = "Back";
+            obj.volumes.push_back(back);
+            auto side_l = make_box(vec3(-s*0.4f, s*0.5f, 0), vec3(s*0.03f, s*1.0f, s*0.25f));
+            side_l.material.diffuse = vec4(0.48f,0.32f,0.15f,1); side_l.name = "SideL";
+            obj.volumes.push_back(side_l);
+            auto side_r = make_box(vec3(s*0.4f, s*0.5f, 0), vec3(s*0.03f, s*1.0f, s*0.25f));
+            side_r.material.diffuse = vec4(0.48f,0.32f,0.15f,1); side_r.name = "SideR";
+            obj.volumes.push_back(side_r);
+            for (int i = 0; i < 4; i++) {
+                float y = (float)i * s*0.28f;
+                auto shelf = make_box(vec3(0, y, 0), vec3(s*0.78f, s*0.025f, s*0.25f));
+                shelf.material.diffuse = vec4(0.5f,0.33f,0.15f,1); shelf.name = "Shelf" + std::to_string(i);
+                obj.volumes.push_back(shelf);
+            }
+            vec4 book_colors[] = {vec4(0.8f,0.1f,0.1f,1), vec4(0.1f,0.3f,0.8f,1), vec4(0.1f,0.6f,0.15f,1), vec4(0.8f,0.5f,0.1f,1), vec4(0.6f,0.1f,0.6f,1)};
+            for (int i = 0; i < 6; i++) {
+                float shelf_y = s*0.28f + (float)(i/3) * s*0.28f;
+                float x = -s*0.2f + (float)(i%3) * s*0.15f;
+                float h = s*0.15f + s*0.05f * noise2d(seed+(float)i, 400);
+                auto book = make_box(vec3(x, shelf_y + h*0.5f + s*0.015f, 0), vec3(s*0.04f, h, s*0.18f));
+                book.noise_amount = 0.02f; book.seed_offset = seed + (float)i;
+                book.material.diffuse = book_colors[i % 5]; book.name = "Book" + std::to_string(i);
+                obj.volumes.push_back(book);
+            }
+            return obj;
+        }
+    });
+
+    rules.push_back({"potion", {"potion"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Potion";
+            float s = sz;
+            auto flask = make_sphere(vec3(0, s*0.15f, 0), s*0.15f, 12);
+            flask.noise_amount = 0.03f; flask.seed_offset = seed;
+            flask.scale = vec3(1.0f, 0.8f, 1.0f);
+            flask.material.diffuse = col.w > 0 ? col : vec4(0.3f,0.7f,0.3f,0.7f);
+            flask.material.opacity = 0.7f; flask.name = "Flask";
+            obj.volumes.push_back(flask);
+            auto neck = make_cylinder(vec3(0, s*0.32f, 0), s*0.04f, s*0.12f, 8);
+            neck.material.diffuse = vec4(0.6f,0.8f,0.6f,0.8f); neck.material.opacity = 0.8f; neck.name = "Neck";
+            obj.volumes.push_back(neck);
+            auto cork = make_cylinder(vec3(0, s*0.4f, 0), s*0.035f, s*0.05f, 6);
+            cork.material.diffuse = vec4(0.6f,0.4f,0.2f,1); cork.name = "Cork";
+            obj.volumes.push_back(cork);
+            return obj;
+        }
+    });
+
+    rules.push_back({"cave", {"cave", "grotte"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Cave";
+            float s = sz * 1.5f;
+            auto arch = make_torus(vec3(0, s*0.15f, 0), s*0.4f, s*0.15f, 16);
+            arch.rotation.x = (float)M_PI*0.5f;
+            arch.noise_amount = 0.15f; arch.noise_scale = 2.0f; arch.seed_offset = seed;
+            arch.material.diffuse = vec4(0.4f,0.38f,0.35f,1); arch.name = "Arch";
+            obj.volumes.push_back(arch);
+            auto wall_l = make_box(vec3(-s*0.55f, s*0.15f, 0), vec3(s*0.3f, s*0.6f, s*0.5f));
+            wall_l.noise_amount = 0.12f; wall_l.seed_offset = seed+5;
+            wall_l.material.diffuse = vec4(0.38f,0.36f,0.33f,1); wall_l.name = "WallL";
+            obj.volumes.push_back(wall_l);
+            auto wall_r = make_box(vec3(s*0.55f, s*0.15f, 0), vec3(s*0.3f, s*0.6f, s*0.5f));
+            wall_r.noise_amount = 0.12f; wall_r.seed_offset = seed+6;
+            wall_r.material.diffuse = vec4(0.38f,0.36f,0.33f,1); wall_r.name = "WallR";
+            obj.volumes.push_back(wall_r);
+            auto ceiling = make_box(vec3(0, s*0.5f, 0), vec3(s*1.2f, s*0.2f, s*0.5f));
+            ceiling.noise_amount = 0.15f; ceiling.seed_offset = seed+10;
+            ceiling.material.diffuse = vec4(0.35f,0.33f,0.3f,1); ceiling.name = "Ceiling";
+            obj.volumes.push_back(ceiling);
+            return obj;
+        }
+    });
+
+    rules.push_back({"tent", {"tent", "tente"},
+        [](float sz, uint32_t seed, const vec4& col) -> DecomposedObject {
+            DecomposedObject obj; obj.name = "Tent";
+            float s = sz;
+            auto body = make_cone(vec3(0, s*0.35f, 0), s*0.5f, s*0.7f, 4);
+            body.noise_amount = 0.06f; body.seed_offset = seed; body.rotation.y = (float)M_PI*0.25f;
+            body.material.diffuse = col.w > 0 ? col : vec4(0.6f,0.45f,0.2f,1); body.name = "Body";
+            obj.volumes.push_back(body);
+            auto floor = make_disc(vec3(0, -s*0.01f, 0), s*0.5f, s*0.02f, 10);
+            floor.material.diffuse = vec4(0.35f,0.3f,0.2f,1); floor.name = "Floor";
+            obj.volumes.push_back(floor);
+            auto pole = make_cylinder(vec3(0, s*0.4f, 0), s*0.015f, s*0.8f, 6);
+            pole.material.diffuse = vec4(0.4f,0.28f,0.12f,1); pole.name = "Pole";
+            obj.volumes.push_back(pole);
+            auto door_flap = make_box(vec3(s*0.25f, s*0.15f, s*0.02f), vec3(s*0.18f, s*0.3f, s*0.01f));
+            door_flap.noise_amount = 0.08f; door_flap.seed_offset = seed+10;
+            door_flap.material.diffuse = col.w > 0 ? col : vec4(0.55f,0.4f,0.18f,1); door_flap.name = "DoorFlap";
+            obj.volumes.push_back(door_flap);
             return obj;
         }
     });
@@ -1642,6 +2901,10 @@ DecomposedObject Decomposer::decompose(const ParsedPrompt& prompt) {
                 vol = make_cone(vec3(0), prompt.size * 0.3f, prompt.size, 16);
             } else if (sh == "torus") {
                 vol = make_torus(vec3(0), prompt.size * 0.3f, prompt.size * 0.1f, 20);
+            } else if (sh == "arrow") {
+                vol = make_arrow(vec3(0), prompt.size * 0.05f, prompt.size * 0.6f, prompt.size * 0.15f, prompt.size * 0.2f);
+            } else if (sh == "plane") {
+                vol = make_plane(vec3(0), vec3(prompt.size));
             } else {
                 vol = make_box(vec3(0), vec3(prompt.size));
             }
