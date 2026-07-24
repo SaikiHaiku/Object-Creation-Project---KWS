@@ -27,6 +27,10 @@ static void mirror_pos(vec3& pos, const BrushSettings& settings, bool back) {
     if (back) pos = m;
 }
 
+static bool has_symmetry(const BrushSettings& settings) {
+    return has_symmetry(settings);
+}
+
 static float get_mask(BMVert* v) {
     auto it = mask_weights.find(v);
     return (it != mask_weights.end()) ? it->second : 0.0f;
@@ -59,7 +63,7 @@ static void brush_draw(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal,
         v->co += hit_normal * factor;
 
         // Apply symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             // Find or create symmetric vertex
@@ -97,7 +101,7 @@ static void brush_clay(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal,
         v->co = glm::mix(v->co, target, factor);
 
         // Symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             BMVert* sv = bm.vert_find_nearest(sym, radius * 0.1f);
@@ -129,7 +133,7 @@ static void brush_inflate(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal
         v->co += v->no * factor;
 
         // Symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             BMVert* sv = bm.vert_find_nearest(sym, radius * 0.1f);
@@ -185,7 +189,7 @@ static void brush_smooth(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal,
         v->co = glm::mix(v->co, avg, factor);
 
         // Symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             BMVert* sv = bm.vert_find_nearest(sym, radius * 0.1f);
@@ -255,7 +259,7 @@ static void brush_flatten(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal
         v->co = glm::mix(v->co, target, factor);
 
         // Symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             BMVert* sv = bm.vert_find_nearest(sym, radius * 0.1f);
@@ -290,7 +294,7 @@ static void brush_grab(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal,
         v->co += offset * factor;
 
         // Symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             BMVert* sv = bm.vert_find_nearest(sym, radius * 0.1f);
@@ -354,7 +358,7 @@ static void brush_crease(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal,
         v->co += glm::normalize(to_line) * factor * std::min(d_to_line, radius * 0.5f);
 
         // Symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             BMVert* sv = bm.vert_find_nearest(sym, radius * 0.1f);
@@ -392,7 +396,7 @@ static void brush_pinch(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal,
         v->co += to_center * factor;
 
         // Symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             BMVert* sv = bm.vert_find_nearest(sym, radius * 0.1f);
@@ -423,7 +427,7 @@ static void brush_mask(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal,
         set_mask(v, std::min(1.0f, current + delta));
 
         // Symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             BMVert* sv = bm.vert_find_nearest(sym, radius * 0.1f);
@@ -477,7 +481,7 @@ static void brush_smooth_mask(BMesh& bm, const vec3& hit_pos, const vec3& hit_no
         set_mask(v, current + (avg - current) * factor);
 
         // Symmetry
-        if (settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z) {
+        if (has_symmetry(settings)) {
             vec3 sym = v->co;
             mirror_pos(sym, settings, true);
             BMVert* sv = bm.vert_find_nearest(sym, radius * 0.1f);

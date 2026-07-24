@@ -118,6 +118,15 @@ static void save_undo(const std::string& desc) {
     redo_stack.clear();
 }
 
+static void sync_bmesh_to_mesh(SceneNode* node) {
+    if (!node || !node->mesh) return;
+    auto it = edit_bmeshes.find(node);
+    if (it != edit_bmeshes.end()) {
+        node->mesh->mesh_from_bmesh(it->second);
+        renderer.invalidate_mesh(node->mesh.get());
+    }
+}
+
 static bool undo() {
     if (undo_stack.empty()) return false;
     UndoState current;
@@ -172,6 +181,39 @@ static const char* OCP_FILTER = "OCP Scene\0*.ocp\0All\0*.*\0";
 static const char* OBJ_FILTER = "OBJ Files\0*.obj\0All\0*.*\0";
 static const char* STL_FILTER = "STL Files\0*.stl\0All\0*.*\0";
 static const char* PNG_FILTER = "PNG Files\0*.png\0All\0*.*\0";
+
+static bool save_scene_to_file() {
+    auto p = save_file_dialog(OCP_FILTER);
+    if (p.empty()) return false;
+    std::string data = scene.save_to_string();
+    FILE* f = fopen(p.c_str(), "w");
+    if (!f) return false;
+    fwrite(data.c_str(), 1, data.size(), f);
+    fclose(f);
+    status_text = "Saved: " + p;
+    log_message("Saved: " + p);
+    return true;
+}
+
+static bool load_scene_from_file() {
+    auto p = open_file_dialog(OCP_FILTER);
+    if (p.empty()) return false;
+    FILE* f = fopen(p.c_str(), "r");
+    if (!f) return false;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 0) { fclose(f); status_text = "Failed to load: empty or invalid file"; return false; }
+    std::string data(sz, 0);
+    fread(&data[0], 1, sz, f);
+    fclose(f);
+    scene.load_from_string(data);
+    modifier_stacks.clear();
+    edit_bmeshes.clear();
+    status_text = "Loaded: " + p;
+    log_message("Loaded: " + p);
+    return true;
+}
 
 static void add_primitive(const std::string& name) {
     save_undo("Add " + name);
@@ -320,12 +362,8 @@ static void remove_modifier_from_node(SceneNode* node, int index) {
 
 static void exit_edit_mode() {
     if (edit_node && current_mode == MODE_EDIT) {
-        auto it = edit_bmeshes.find(edit_node);
-        if (it != edit_bmeshes.end()) {
-            edit_node->mesh->mesh_from_bmesh(it->second);
-            renderer.invalidate_mesh(edit_node->mesh.get());
-            edit_bmeshes.erase(it);
-        }
+        sync_bmesh_to_mesh(edit_node);
+        edit_bmeshes.erase(edit_node);
         log_message("Exited edit mode: " + edit_node->name);
     }
     edit_node = nullptr;
@@ -334,12 +372,8 @@ static void exit_edit_mode() {
 
 static void exit_sculpt_mode() {
     if (edit_node && current_mode == MODE_SCULPT) {
-        auto it = edit_bmeshes.find(edit_node);
-        if (it != edit_bmeshes.end()) {
-            edit_node->mesh->mesh_from_bmesh(it->second);
-            renderer.invalidate_mesh(edit_node->mesh.get());
-            edit_bmeshes.erase(it);
-        }
+        sync_bmesh_to_mesh(edit_node);
+        edit_bmeshes.erase(edit_node);
         sculpt::clear_mask_weights();
         log_message("Exited sculpt mode: " + edit_node->name);
     }
@@ -541,8 +575,7 @@ static void cursor_position_callback(GLFWwindow*, double mx, double my) {
                 sculpt_hit_pos = wp;
                 sculpt_hit_valid = true;
                 sculpt::apply_brush(bm, best_v->co, best_v->no, brush_settings);
-                edit_node->mesh->mesh_from_bmesh(bm);
-                renderer.invalidate_mesh(edit_node->mesh.get());
+                sync_bmesh_to_mesh(edit_node);
             }
         }
     } else if (current_mode == MODE_SCULPT && edit_node) {
@@ -618,37 +651,8 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     else if (ctrl && !shift && key == GLFW_KEY_G) { save_undo("Group"); scene.group_selected(); status_text = "Grouped"; log_message("Grouped selected nodes"); }
     else if (ctrl && shift && key == GLFW_KEY_G) { save_undo("Ungroup"); scene.ungroup_selected(); status_text = "Ungrouped"; log_message("Ungrouped"); }
     else if (ctrl && key == GLFW_KEY_N) setup_default_scene();
-    else if (ctrl && key == GLFW_KEY_S) {
-        auto p = save_file_dialog(OCP_FILTER);
-        if (!p.empty()) {
-            std::string data = scene.save_to_string();
-            FILE* f = fopen(p.c_str(), "w");
-            if (f) { fwrite(data.c_str(), 1, data.size(), f); fclose(f); status_text = "Saved: " + p; log_message("Saved: " + p); }
-        }
-    }
-    else if (ctrl && key == GLFW_KEY_O) {
-        auto p = open_file_dialog(OCP_FILTER);
-        if (!p.empty()) {
-            FILE* f = fopen(p.c_str(), "r");
-            if (f) {
-                fseek(f, 0, SEEK_END);
-                long sz = ftell(f);
-                fseek(f, 0, SEEK_SET);
-                if (sz > 0) {
-                    std::string data(sz, 0);
-                    fread(&data[0], 1, sz, f);
-                    fclose(f);
-                    scene.load_from_string(data);
-                    modifier_stacks.clear();
-                    status_text = "Loaded: " + p;
-                    log_message("Loaded: " + p);
-                } else {
-                    fclose(f);
-                    status_text = "Failed to load: empty or invalid file";
-                }
-            }
-        }
-    }
+    else if (ctrl && key == GLFW_KEY_S) { save_scene_to_file(); }
+    else if (ctrl && key == GLFW_KEY_O) { load_scene_from_file(); }
     else if (ctrl && key == GLFW_KEY_A) {
         auto ns = scene.get_all_nodes();
         scene.multi_selection.clear();
@@ -700,32 +704,8 @@ static void draw_menu_bar() {
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("New Scene", "Ctrl+N")) setup_default_scene();
-            if (ImGui::MenuItem("Save Scene", "Ctrl+S")) {
-                auto p = save_file_dialog(OCP_FILTER);
-                if (!p.empty()) {
-                    std::string data = scene.save_to_string();
-                    FILE* f = fopen(p.c_str(), "w");
-                    if (f) { fwrite(data.c_str(), 1, data.size(), f); fclose(f); status_text = "Saved: " + p; }
-                }
-            }
-            if (ImGui::MenuItem("Load Scene", "Ctrl+O")) {
-                auto p = open_file_dialog(OCP_FILTER);
-                if (!p.empty()) {
-                    FILE* f = fopen(p.c_str(), "r");
-                    if (f) {
-                        fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
-                        if (sz > 0) {
-                            std::string data(sz, 0); fread(&data[0], 1, sz, f); fclose(f);
-                            scene.load_from_string(data);
-                            modifier_stacks.clear();
-                            status_text = "Loaded: " + p;
-                        } else {
-                            fclose(f);
-                            status_text = "Failed to load: empty or invalid file";
-                        }
-                    }
-                }
-            }
+            if (ImGui::MenuItem("Save Scene", "Ctrl+S")) save_scene_to_file();
+            if (ImGui::MenuItem("Load Scene", "Ctrl+O")) load_scene_from_file();
             ImGui::Separator();
             if (ImGui::MenuItem("Import OBJ")) {
                 auto p = open_file_dialog(OBJ_FILTER);
@@ -1750,33 +1730,28 @@ static void draw_edit_panel() {
                 case 12: edit_tools::solidify(bm, 0.1f); break;
                 case 13: edit_tools::mirror(bm, 0); break;
             }
-            edit_node->mesh->mesh_from_bmesh(bm);
-            renderer.invalidate_mesh(edit_node->mesh.get());
+            sync_bmesh_to_mesh(edit_node);
             log_message("Applied edit tool");
         }
 
         ImGui::Separator();
         if (ImGui::Button("Subdivide")) {
             edit_tools::subdivide(bm, 1);
-            edit_node->mesh->mesh_from_bmesh(bm);
-            renderer.invalidate_mesh(edit_node->mesh.get());
+            sync_bmesh_to_mesh(edit_node);
         }
         ImGui::SameLine();
         if (ImGui::Button("Smooth")) {
             edit_tools::smooth(bm, 0.5f, 1);
-            edit_node->mesh->mesh_from_bmesh(bm);
-            renderer.invalidate_mesh(edit_node->mesh.get());
+            sync_bmesh_to_mesh(edit_node);
         }
         if (ImGui::Button("Triangulate")) {
             edit_tools::triangulate(bm);
-            edit_node->mesh->mesh_from_bmesh(bm);
-            renderer.invalidate_mesh(edit_node->mesh.get());
+            sync_bmesh_to_mesh(edit_node);
         }
         ImGui::SameLine();
         if (ImGui::Button("Recalc N")) {
             edit_tools::recalculate_normals(bm);
-            edit_node->mesh->mesh_from_bmesh(bm);
-            renderer.invalidate_mesh(edit_node->mesh.get());
+            sync_bmesh_to_mesh(edit_node);
         }
         if (ImGui::Button("Select All")) { bm.select_all(true); }
         ImGui::SameLine();
