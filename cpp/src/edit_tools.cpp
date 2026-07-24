@@ -1633,10 +1633,9 @@ void triangulate(BMesh& bm) {
 
     for (BMFace* f : faces) {
         if (f->index < 0 || f->len < 4) continue;
-
-        // Fan triangulation from vertex 0
-        for (int i = 1; i < f->len - 1; i++) {
-            bm.face_split_tri(f, 0, i);
+        BMFace* current = f;
+        while (current && current->len > 3) {
+            current = bm.face_split_tri(current, 0, 2);
         }
     }
 

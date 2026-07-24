@@ -32,5 +32,7 @@ void apply_brush(BMesh& bm, const vec3& hit_pos, const vec3& hit_normal,
 
 void smooth_vertices(BMesh& bm, const vec3& center, float radius, float strength);
 
+void clear_mask_weights();
+
 } // namespace sculpt
 } // namespace ocp

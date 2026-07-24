@@ -27,7 +27,7 @@ public:
     struct MeshBuffers { uint32_t vao=0, vbo=0, ebo=0; int index_count=0; };
 
 private:
-    uint32_t shader_3d=0, shader_line=0, shader_grid=0, shader_outline=0, shader_skybox=0;
+    uint32_t shader_3d=0, shader_line=0, shader_grid=0, shader_outline=0;
 
     uint32_t grid_vao=0, grid_vbo=0;
     int grid_vertex_count=0;
@@ -38,7 +38,6 @@ private:
 
     uint32_t sel_vao=0, sel_vbo=0;
     int sel_vertex_count=0;
-    uint32_t outline_fbo=0, outline_tex=0;
 
     uint32_t gizmo_vao=0, gizmo_vbo=0;
     int gizmo_vertex_count=0;

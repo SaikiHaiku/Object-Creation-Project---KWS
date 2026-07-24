@@ -203,8 +203,15 @@ void BMesh::unlink_edge_face(BMEdge* e, BMFace* f) {
     e->f2 = nullptr;
 }
 
-void BMesh::link_loop(BMEdge* /*e*/, BMFace* /*f*/) {}
-void BMesh::unlink_loop(BMEdge* /*e*/, BMFace* /*f*/) {}
+void BMesh::link_loop(BMEdge* e, BMFace* f) {
+    if (!e || !f) return;
+    link_edge_face(e, f);
+}
+
+void BMesh::unlink_loop(BMEdge* e, BMFace* f) {
+    if (!e || !f) return;
+    unlink_edge_face(e, f);
+}
 
 BMVert* BMesh::edge_split_middle(BMEdge* e) {
     vec3 mid = (e->v1->co + e->v2->co) * 0.5f;
@@ -219,12 +226,15 @@ BMVert* BMesh::edge_split_middle(BMEdge* e) {
         unlink_edge_face(e, e->f1);
         link_edge_face(e2, e->f1);
         for (int i = 0; i < e->f1->len; i++) {
-            if (e->f1->edges[i] == e) e->f1->edges[i] = e;
+            if (e->f1->edges[i] == e) e->f1->edges[i] = e2;
         }
     }
     if (e->f2) {
         unlink_edge_face(e, e->f2);
         link_edge_face(e2, e->f2);
+        for (int i = 0; i < e->f2->len; i++) {
+            if (e->f2->edges[i] == e) e->f2->edges[i] = e2;
+        }
     }
     return v;
 }
@@ -388,6 +398,47 @@ void BMesh::dissolve_edge(BMEdge* e) {
 
 void BMesh::dissolve_face(BMFace* f) {
     if (!f) return;
+    BMEdge* dissolve_e = nullptr;
+    BMFace* neighbor = nullptr;
+    for (int i = 0; i < f->len; i++) {
+        BMEdge* e = f->edges[i];
+        if (e->f1 && e->f2 && e->f1 != f) {
+            dissolve_e = e;
+            neighbor = e->f1;
+            break;
+        }
+        if (e->f1 && e->f2 && e->f2 != f) {
+            dissolve_e = e;
+            neighbor = e->f2;
+            break;
+        }
+    }
+    if (!dissolve_e || !neighbor) return;
+    std::vector<BMVert*> new_verts;
+    std::vector<BMEdge*> new_edges;
+    for (int i = 0; i < f->len; i++) {
+        if (f->edges[i] != dissolve_e) {
+            new_verts.push_back(f->verts[i]);
+            new_edges.push_back(f->edges[i]);
+        }
+    }
+    for (int i = 0; i < neighbor->len; i++) {
+        if (neighbor->edges[i] != dissolve_e) {
+            bool already = false;
+            for (auto* v : new_verts) {
+                if (v == neighbor->verts[i]) { already = true; break; }
+            }
+            if (!already) {
+                new_verts.push_back(neighbor->verts[i]);
+                new_edges.push_back(neighbor->edges[i]);
+            }
+        }
+    }
+    remove_face_raw(f);
+    remove_face_raw(neighbor);
+    if (new_verts.size() >= 3) {
+        add_face_raw(new_verts, new_edges);
+    }
 }
 
 void BMesh::recalc_face_normal(BMFace* f) {
@@ -435,7 +486,31 @@ void BMesh::select_all(bool state) {
     for (auto* f : faces) f->select = state;
 }
 
-void BMesh::select_flush() {}
+void BMesh::select_flush() {
+    for (auto* v : verts) {
+        if (v->index < 0) continue;
+        bool any_edge_selected = false;
+        BMEdge* eiter = v->e;
+        if (eiter) do {
+            if (eiter->select && eiter->index >= 0) { any_edge_selected = true; break; }
+            eiter = (eiter->v1 == v) ? eiter->v1_disk_next : eiter->v2_disk_next;
+        } while (eiter && eiter != v->e);
+        if (!any_edge_selected) v->select = false;
+    }
+    for (auto* e : edges) {
+        if (e->index < 0) continue;
+        bool any_vert_selected = e->v1->select || e->v2->select;
+        if (!any_vert_selected) e->select = false;
+    }
+    for (auto* f : faces) {
+        if (f->index < 0) continue;
+        bool any_vert_selected = false;
+        for (int i = 0; i < f->len; i++) {
+            if (f->verts[i]->select) { any_vert_selected = true; break; }
+        }
+        if (!any_vert_selected) f->select = false;
+    }
+}
 
 bool BMesh::select_is_single() const {
     int count = 0;

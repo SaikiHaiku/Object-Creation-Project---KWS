@@ -34,6 +34,7 @@ public:
 
     SceneNode* add_child(std::unique_ptr<SceneNode> child);
     void remove_child(SceneNode* child);
+    std::unique_ptr<SceneNode> steal_child(SceneNode* child);
     void update_matrices(const mat4& parent_world = mat4(1.0f));
 
     mat4 get_local_matrix() const { return local_matrix; }

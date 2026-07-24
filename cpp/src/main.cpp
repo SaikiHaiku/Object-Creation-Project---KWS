@@ -340,6 +340,7 @@ static void exit_sculpt_mode() {
             renderer.invalidate_mesh(edit_node->mesh.get());
             edit_bmeshes.erase(it);
         }
+        sculpt::clear_mask_weights();
         log_message("Exited sculpt mode: " + edit_node->name);
     }
     edit_node = nullptr;
@@ -481,7 +482,8 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
                         scene.select(hit);
                         status_text = "Selected: " + hit->name;
                     }
-                    strncpy(rename_buf, hit->name.c_str(), sizeof(rename_buf));
+                    strncpy(rename_buf, hit->name.c_str(), sizeof(rename_buf) - 1);
+                    rename_buf[sizeof(rename_buf) - 1] = '\0';
                     log_message("Selected: " + hit->name);
                 }
                 else scene.deselect();
@@ -580,6 +582,7 @@ static void scroll_callback(GLFWwindow*, double, double yoff) {
 }
 
 static void framebuffer_size_callback(GLFWwindow*, int w, int h) {
+    if (h <= 0) h = 1;
     WIN_W = w; WIN_H = h;
     camera.aspect = (float)w / (float)h;
     renderer.resize(w, h);
@@ -631,13 +634,18 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
                 fseek(f, 0, SEEK_END);
                 long sz = ftell(f);
                 fseek(f, 0, SEEK_SET);
-                std::string data(sz, 0);
-                fread(&data[0], 1, sz, f);
-                fclose(f);
-                scene.load_from_string(data);
-                modifier_stacks.clear();
-                status_text = "Loaded: " + p;
-                log_message("Loaded: " + p);
+                if (sz > 0) {
+                    std::string data(sz, 0);
+                    fread(&data[0], 1, sz, f);
+                    fclose(f);
+                    scene.load_from_string(data);
+                    modifier_stacks.clear();
+                    status_text = "Loaded: " + p;
+                    log_message("Loaded: " + p);
+                } else {
+                    fclose(f);
+                    status_text = "Failed to load: empty or invalid file";
+                }
             }
         }
     }
@@ -647,7 +655,20 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
         for (auto* n : ns) scene.multi_selection.push_back(n);
         if (!ns.empty()) scene.selected_node = ns[0];
     }
-    else if (key == GLFW_KEY_DELETE) { save_undo("Delete"); scene.delete_selected(); status_text = "Deleted"; log_message("Deleted selected"); }
+    else if (key == GLFW_KEY_DELETE) {
+        if (edit_node && scene.selected_node == edit_node) {
+            if (current_mode == MODE_EDIT) exit_edit_mode();
+            else if (current_mode == MODE_SCULPT) exit_sculpt_mode();
+        }
+        if (scene.selected_node) {
+            modifier_stacks.erase(scene.selected_node);
+            edit_bmeshes.erase(scene.selected_node);
+        }
+        save_undo("Delete");
+        scene.delete_selected();
+        status_text = "Deleted";
+        log_message("Deleted selected");
+    }
     else if (key == GLFW_KEY_G && !ctrl) { selected_tool = 0; status_text = "Tool: Grab (G)"; log_message("Tool: Grab/Move"); }
     else if (key == GLFW_KEY_R && !ctrl) { selected_tool = 1; status_text = "Tool: Rotate (R)"; log_message("Tool: Rotate"); }
     else if (key == GLFW_KEY_S && !ctrl) { selected_tool = 2; status_text = "Tool: Scale (S)"; log_message("Tool: Scale"); }
@@ -693,10 +714,15 @@ static void draw_menu_bar() {
                     FILE* f = fopen(p.c_str(), "r");
                     if (f) {
                         fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
-                        std::string data(sz, 0); fread(&data[0], 1, sz, f); fclose(f);
-                        scene.load_from_string(data);
-                        modifier_stacks.clear();
-                        status_text = "Loaded: " + p;
+                        if (sz > 0) {
+                            std::string data(sz, 0); fread(&data[0], 1, sz, f); fclose(f);
+                            scene.load_from_string(data);
+                            modifier_stacks.clear();
+                            status_text = "Loaded: " + p;
+                        } else {
+                            fclose(f);
+                            status_text = "Failed to load: empty or invalid file";
+                        }
                     }
                 }
             }
@@ -917,7 +943,8 @@ static void draw_scene_tree() {
             } else {
                 scene.select(node);
             }
-            strncpy(rename_buf, node->name.c_str(), sizeof(rename_buf));
+            strncpy(rename_buf, node->name.c_str(), sizeof(rename_buf) - 1);
+            rename_buf[sizeof(rename_buf) - 1] = '\0';
         }
         if (ImGui::IsItemClicked(1)) ImGui::OpenPopup("node_menu");
 
@@ -1007,7 +1034,8 @@ static void draw_properties() {
     }
 
     char name_buf[128];
-    strncpy(name_buf, node->name.c_str(), sizeof(name_buf));
+    strncpy(name_buf, node->name.c_str(), sizeof(name_buf) - 1);
+    name_buf[sizeof(name_buf) - 1] = '\0';
     if (ImGui::InputText("##name", name_buf, sizeof(name_buf))) {
         node->name = name_buf;
     }
@@ -1290,7 +1318,8 @@ static void draw_ai_panel() {
     if (!ai_prompt_history.empty() && ImGui::CollapsingHeader("Prompt History")) {
         for (int i = (int)ai_prompt_history.size() - 1; i >= 0; i--) {
             if (ImGui::Selectable(ai_prompt_history[i].c_str())) {
-                strncpy(ai_prompt, ai_prompt_history[i].c_str(), sizeof(ai_prompt));
+                strncpy(ai_prompt, ai_prompt_history[i].c_str(), sizeof(ai_prompt) - 1);
+                ai_prompt[sizeof(ai_prompt) - 1] = '\0';
             }
         }
     }

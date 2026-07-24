@@ -23,6 +23,19 @@ void SceneNode::remove_child(SceneNode* child) {
         children.end());
 }
 
+std::unique_ptr<SceneNode> SceneNode::steal_child(SceneNode* child) {
+    if (!child) return nullptr;
+    child->parent = nullptr;
+    for (auto it = children.begin(); it != children.end(); ++it) {
+        if (it->get() == child) {
+            auto owned = std::move(*it);
+            children.erase(it);
+            return owned;
+        }
+    }
+    return nullptr;
+}
+
 void SceneNode::update_matrices(const mat4& parent_world) {
     mat4 T = glm::translate(mat4(1.0f), position);
     mat4 Rx = glm::rotate(mat4(1.0f), deg2rad(rotation.x), vec3(1, 0, 0));
@@ -233,11 +246,9 @@ void Scene::group_selected() {
     for (auto* node : to_move) {
         if (!node->parent) continue;
         vec3 world_pos = node->get_world_position();
-        node->parent->remove_child(node);
-        node->parent = nullptr;
-        node->position = world_pos;
-        auto ptr = std::unique_ptr<SceneNode>(node);
-        group_raw->add_child(std::move(ptr));
+        auto owned = node->parent->steal_child(node);
+        owned->position = world_pos;
+        group_raw->add_child(std::move(owned));
     }
     multi_selection.clear();
     select(group_raw);

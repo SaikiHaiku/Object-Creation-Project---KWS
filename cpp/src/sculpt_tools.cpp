@@ -533,5 +533,9 @@ void smooth_vertices(BMesh& bm, const vec3& center, float radius, float strength
     apply_brush(bm, center, vec3(0.0f, 1.0f, 0.0f), s);
 }
 
+void clear_mask_weights() {
+    mask_weights.clear();
+}
+
 } // namespace sculpt
 } // namespace ocp

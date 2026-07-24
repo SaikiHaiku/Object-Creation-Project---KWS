@@ -320,7 +320,6 @@ void Renderer::initialize(int w, int h) {
     shader_line = compile_shader(VERT_LINE, FRAG_LINE);
     shader_grid = compile_shader(VERT_GRID, FRAG_GRID);
     shader_outline = compile_shader(VERT_OUTLINE, FRAG_OUTLINE);
-    shader_skybox = compile_shader(VERT_SKYBOX, FRAG_SKYBOX);
 
     last_grid_size = 20.0f;
     last_grid_subdiv = 20;
@@ -341,26 +340,10 @@ void Renderer::initialize(int w, int h) {
     glGenVertexArrays(1, &sculpt_cursor_vao);
     glGenBuffers(1, &sculpt_cursor_vbo);
     sculpt_cursor_vertex_count = 0;
-
-    glGenFramebuffers(1, &outline_fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, outline_fbo);
-    glGenTextures(1, &outline_tex);
-    glBindTexture(GL_TEXTURE_2D, outline_tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, outline_tex, 0);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void Renderer::resize(int w, int h) {
     glViewport(0, 0, w, h);
-    if (outline_tex) {
-        glBindTexture(GL_TEXTURE_2D, outline_tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    }
 }
 
 void Renderer::build_grid(float size, int subdiv) {
@@ -562,21 +545,6 @@ void Renderer::render_scene(Scene& scene, Camera& camera, int vp_x, int vp_y, in
         render_selection_box(sel, view, proj);
 
     if (!scene.multi_selection.empty()) {
-        glBindFramebuffer(GL_FRAMEBUFFER, outline_fbo);
-        glViewport(0, 0, vp_w, vp_h);
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glDisable(GL_DEPTH_TEST);
-        glDisable(GL_CULL_FACE);
-
-        for (auto* sel : scene.multi_selection)
-            render_selection_outline(sel, view, proj, camera);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(vp_x, vp_y, vp_w, vp_h);
-        glEnable(GL_DEPTH_TEST);
-        glEnable(GL_CULL_FACE);
-
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
@@ -898,14 +866,11 @@ void Renderer::cleanup() {
     if (shader_line) glDeleteProgram(shader_line);
     if (shader_grid) glDeleteProgram(shader_grid);
     if (shader_outline) glDeleteProgram(shader_outline);
-    if (shader_skybox) glDeleteProgram(shader_skybox);
     glDeleteBuffers(1, &grid_vbo); glDeleteVertexArrays(1, &grid_vao);
     glDeleteBuffers(1, &sel_vbo); glDeleteVertexArrays(1, &sel_vao);
     glDeleteBuffers(1, &gizmo_vbo); glDeleteVertexArrays(1, &gizmo_vao);
     glDeleteBuffers(1, &edit_vbo); glDeleteVertexArrays(1, &edit_vao);
     glDeleteBuffers(1, &sculpt_cursor_vbo); glDeleteVertexArrays(1, &sculpt_cursor_vao);
-    if (outline_fbo) glDeleteFramebuffers(1, &outline_fbo);
-    if (outline_tex) glDeleteTextures(1, &outline_tex);
     for (auto& [k, mb] : mesh_cache) {
         glDeleteBuffers(1, &mb.vbo); glDeleteBuffers(1, &mb.ebo); glDeleteVertexArrays(1, &mb.vao);
     }
