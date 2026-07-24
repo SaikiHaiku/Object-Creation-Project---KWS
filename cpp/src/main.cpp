@@ -65,6 +65,12 @@ static bool right_held_for_orbit = false;
 static double last_mx = 0, last_my = 0;
 static bool viewport_hovered = false;
 
+static bool transform_active = false;
+static vec3 transform_start_pos;
+static vec3 transform_start_rot;
+static vec3 transform_start_scl;
+static double transform_start_mx = 0, transform_start_my = 0;
+
 struct UndoState {
     std::string data;
     std::string description;
@@ -416,12 +422,14 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
             } else {
                 mouse_panning = true;
             }
+            transform_active = false;
         } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
             if (viewport_hovered) {
                 mouse_orbiting = true;
                 right_held_for_orbit = true;
                 glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
             }
+            transform_active = false;
         } else if (button == GLFW_MOUSE_BUTTON_LEFT) {
             if (mods & GLFW_MOD_ALT) {
                 mouse_orbiting = true;
@@ -502,25 +510,36 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
                 }
             } else if (current_mode == MODE_SCULPT && viewport_hovered && edit_node) {
                 sculpt_stroke_active = true;
+                save_undo("Sculpt Stroke");
             } else if (viewport_hovered) {
                 double mx2, my2; glfwGetCursorPos(w, &mx2, &my2);
                 float vx = (float)mx2, vy = (float)my2;
                 vec3 origin, dir;
                 camera.screen_to_ray(vx, vy, (float)WIN_W, (float)WIN_H, origin, dir);
-                SceneNode* hit; float dist;
-                if (scene.raycast(origin, dir, hit, dist)) {
-                    if (mods & GLFW_MOD_CONTROL) {
-                        scene.toggle_multi_select(hit);
-                        status_text = "Multi-select: " + hit->name + " (" + std::to_string(scene.multi_selection.size()) + " selected)";
-                    } else {
-                        scene.select(hit);
-                        status_text = "Selected: " + hit->name;
+
+                if (scene.selected_node && current_mode == MODE_OBJECT && !(mods & GLFW_MOD_CONTROL)) {
+                    transform_active = true;
+                    transform_start_pos = scene.selected_node->position;
+                    transform_start_rot = scene.selected_node->rotation;
+                    transform_start_scl = scene.selected_node->scale;
+                    transform_start_mx = mx2;
+                    transform_start_my = my2;
+                } else {
+                    SceneNode* hit; float dist;
+                    if (scene.raycast(origin, dir, hit, dist)) {
+                        if (mods & GLFW_MOD_CONTROL) {
+                            scene.toggle_multi_select(hit);
+                            status_text = "Multi-select: " + hit->name + " (" + std::to_string(scene.multi_selection.size()) + " selected)";
+                        } else {
+                            scene.select(hit);
+                            status_text = "Selected: " + hit->name;
+                        }
+                        strncpy(rename_buf, hit->name.c_str(), sizeof(rename_buf) - 1);
+                        rename_buf[sizeof(rename_buf) - 1] = '\0';
+                        log_message("Selected: " + hit->name);
                     }
-                    strncpy(rename_buf, hit->name.c_str(), sizeof(rename_buf) - 1);
-                    rename_buf[sizeof(rename_buf) - 1] = '\0';
-                    log_message("Selected: " + hit->name);
+                    else scene.deselect();
                 }
-                else scene.deselect();
             }
         }
     } else {
@@ -537,6 +556,18 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
                 mouse_orbiting = false;
                 alt_held_for_orbit = false;
             }
+            if (transform_active) {
+                transform_active = false;
+                vec3 new_pos = scene.selected_node ? scene.selected_node->position : vec3(0);
+                vec3 new_rot = scene.selected_node ? scene.selected_node->rotation : vec3(0);
+                vec3 new_scl = scene.selected_node ? scene.selected_node->scale : vec3(1);
+                bool moved = (scene.selected_node &&
+                    (transform_start_pos != new_pos || transform_start_rot != new_rot || transform_start_scl != new_scl));
+                if (moved) {
+                    save_undo("Transform");
+                    log_message("Transform confirmed");
+                }
+            }
             if (current_mode == MODE_SCULPT && sculpt_stroke_active) {
                 sculpt_stroke_active = false;
             }
@@ -549,6 +580,23 @@ static void cursor_position_callback(GLFWwindow*, double mx, double my) {
     if (mouse_orbiting) camera.orbit(dx * 0.5f, dy * 0.5f);
     else if (mouse_panning) camera.pan(dx, dy);
     else if (mouse_zooming) camera.zoom(-dy * 0.5f);
+
+    if (transform_active && scene.selected_node && current_mode == MODE_OBJECT) {
+        float fdx = (float)(mx - transform_start_mx);
+        float fdy = (float)(my - transform_start_my);
+        float sensitivity = 0.005f;
+        if (selected_tool == 0) {
+            vec3 right = camera.get_right();
+            vec3 up = camera.get_up();
+            scene.selected_node->position = transform_start_pos + right * fdx * sensitivity - up * fdy * sensitivity;
+        } else if (selected_tool == 1) {
+            scene.selected_node->rotation = transform_start_rot + vec3(-fdy * 2.0f, fdx * 2.0f, 0);
+        } else if (selected_tool == 2) {
+            float s = 1.0f + fdx * sensitivity;
+            s = std::max(s, 0.01f);
+            scene.selected_node->scale = transform_start_scl * s;
+        }
+    }
 
     if (current_mode == MODE_SCULPT && sculpt_stroke_active && edit_node) {
         double mx2, my2; glfwGetCursorPos(glfwGetCurrentContext(), &mx2, &my2);
@@ -630,7 +678,16 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     // Suppress bindings while Roblox camera mode (right-click held)
     if (right_held_for_orbit) return;
 
-    if (key == GLFW_KEY_KP_1) { camera.set_view("front"); status_text = "View: Front"; }
+    if (key == GLFW_KEY_ESCAPE) {
+        if (transform_active) {
+            scene.selected_node->position = transform_start_pos;
+            scene.selected_node->rotation = transform_start_rot;
+            scene.selected_node->scale = transform_start_scl;
+            transform_active = false;
+            status_text = "Transform cancelled";
+        }
+    }
+    else if (key == GLFW_KEY_KP_1) { camera.set_view("front"); status_text = "View: Front"; }
     else if (key == GLFW_KEY_KP_3) { camera.set_view("right"); status_text = "View: Right"; }
     else if (key == GLFW_KEY_KP_7) { camera.set_view("top"); status_text = "View: Top"; }
     else if (key == GLFW_KEY_KP_5) { camera.ortho = !camera.ortho; status_text = camera.ortho ? "Orthographic" : "Perspective"; }
@@ -1713,6 +1770,11 @@ static void draw_edit_panel() {
         ImGui::Text("V:%d E:%d F:%d", sel_v, sel_e, sel_f);
 
         if (ImGui::Button("Apply Tool##edit")) {
+            const char* tool_names[] = {"Extrude","Inset","Bevel","","","","","Merge","","","","","Solidify","Mirror"};
+            std::string desc = "Edit: ";
+            if (edit_tool >= 0 && edit_tool <= 13 && tool_names[edit_tool]) desc += tool_names[edit_tool];
+            else desc += "Tool";
+            save_undo(desc);
             switch (edit_tool) {
                 case 0: edit_tools::extrude_region(bm, vec3(0, 0.2f, 0)); break;
                 case 1: edit_tools::inset_faces(bm, 0.05f); break;
@@ -1727,23 +1789,27 @@ static void draw_edit_panel() {
 
         ImGui::Separator();
         if (ImGui::Button("Subdivide")) {
+            save_undo("Subdivide");
             edit_tools::subdivide(bm, 1);
             sync_bmesh_to_mesh(edit_node);
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Subdivide selected faces");
         ImGui::SameLine();
         if (ImGui::Button("Smooth")) {
+            save_undo("Smooth");
             edit_tools::smooth(bm, 0.5f, 1);
             sync_bmesh_to_mesh(edit_node);
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Smooth vertex positions");
         if (ImGui::Button("Triangulate")) {
+            save_undo("Triangulate");
             edit_tools::triangulate(bm);
             sync_bmesh_to_mesh(edit_node);
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Convert all faces to triangles");
         ImGui::SameLine();
         if (ImGui::Button("Recalc N")) {
+            save_undo("Recalc Normals");
             edit_tools::recalculate_normals(bm);
             sync_bmesh_to_mesh(edit_node);
         }
