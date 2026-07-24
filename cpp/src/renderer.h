@@ -15,7 +15,6 @@ public:
     void cleanup();
     void render_scene(Scene& scene, Camera& camera, int vp_x, int vp_y, int vp_w, int vp_h);
     void render_gizmo(SceneNode* node, int tool, const mat4& view, const mat4& proj, const Camera& camera);
-    void render_manipulator_gizmo(SceneNode* node, int tool, const mat4& view, const mat4& proj, const Camera& camera, float snap);
     void render_edit_overlays(const BMesh& bm, const mat4& model, const mat4& view, const mat4& proj,
                               int select_mode, const Camera& camera);
     void render_sculpt_cursor(const vec3& world_pos, float radius, const mat4& view, const mat4& proj);

@@ -28,7 +28,7 @@ static void mirror_pos(vec3& pos, const BrushSettings& settings, bool back) {
 }
 
 static bool has_symmetry(const BrushSettings& settings) {
-    return has_symmetry(settings);
+    return settings.use_symmetry_x || settings.use_symmetry_y || settings.use_symmetry_z;
 }
 
 static float get_mask(BMVert* v) {
