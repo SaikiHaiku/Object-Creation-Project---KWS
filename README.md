@@ -56,13 +56,13 @@ Professional 3D/2D object creation tool with manual editing and AI procedural ge
 
 ## Download
 
-**[OCP v3.2 (5 MB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.2/OCP.exe)** + **[libwinpthread-1.dll](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.2/libwinpthread-1.dll)** — Parametric AI engine, BMesh edit mode, sculpt mode, 33 modeling tools, 10 sculpt brushes. Requires OpenGL 3.3+ GPU.
+**[OCP v3.2 Installer (1.2 MB)](https://github.com/SaikiHaiku/Object-Creation-Project---KWS/releases/download/v3.2/OCP-Installer.exe)** — Parametric AI engine, BMesh edit mode, sculpt mode, 33 modeling tools, 10 sculpt brushes. Requires OpenGL 3.3+ GPU.
 
 ## Quick Start
 
-1. Download `OCP.exe` and `libwinpthread-1.dll`
-2. Place both in the same folder
-3. Run `OCP.exe`
+1. Download `OCP-Installer.exe`
+2. Run it and click Install
+3. OCP installs to `%LOCALAPPDATA%\OCP` and creates a Desktop shortcut
 4. Requires OpenGL 3.3+ GPU
 
 ### Build from Source (C++)
