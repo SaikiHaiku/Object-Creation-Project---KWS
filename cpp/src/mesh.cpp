@@ -571,6 +571,7 @@ void Mesh::clear() {
     vertices.clear();
     faces.clear();
     cached_vertex_data.clear();
+    bb_dirty = true;
     cached_index_data.clear();
     dirty = true;
 }
@@ -614,16 +615,30 @@ vec3 Mesh::centroid() const {
 
 vec3 Mesh::get_bounding_box_min() const {
     if (vertices.empty()) return vec3(0.0f);
-    vec3 mn = vertices[0].position;
-    for (auto& v : vertices) mn = glm::min(mn, v.position);
-    return mn;
+    if (bb_dirty) {
+        cached_bb_min = vertices[0].position;
+        cached_bb_max = vertices[0].position;
+        for (auto& v : vertices) {
+            cached_bb_min = glm::min(cached_bb_min, v.position);
+            cached_bb_max = glm::max(cached_bb_max, v.position);
+        }
+        bb_dirty = false;
+    }
+    return cached_bb_min;
 }
 
 vec3 Mesh::get_bounding_box_max() const {
     if (vertices.empty()) return vec3(0.0f);
-    vec3 mx = vertices[0].position;
-    for (auto& v : vertices) mx = glm::max(mx, v.position);
-    return mx;
+    if (bb_dirty) {
+        cached_bb_min = vertices[0].position;
+        cached_bb_max = vertices[0].position;
+        for (auto& v : vertices) {
+            cached_bb_min = glm::min(cached_bb_min, v.position);
+            cached_bb_max = glm::max(cached_bb_max, v.position);
+        }
+        bb_dirty = false;
+    }
+    return cached_bb_max;
 }
 
 vec3 Mesh::get_center() const {
@@ -631,6 +646,7 @@ vec3 Mesh::get_center() const {
 }
 
 void Mesh::rebuild_cache() {
+    bb_dirty = true;
     cached_vertex_data.clear();
     cached_index_data.clear();
     cached_vertex_data.reserve(vertices.size() * 12);

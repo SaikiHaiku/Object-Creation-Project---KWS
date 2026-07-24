@@ -3,6 +3,9 @@
 #include "bmesh.h"
 #include <cstdint>
 #include <unordered_map>
+#include <string>
+
+typedef int GLint;
 
 namespace ocp {
 
@@ -58,6 +61,17 @@ private:
 
     uint32_t compile_shader(const char* vs, const char* fs);
     void use_shader(uint32_t shader);
+    struct UniformLocKey {
+        uint32_t shader; std::string name;
+        bool operator==(const UniformLocKey& o) const { return shader == o.shader && name == o.name; }
+    };
+    struct UniformLocHash {
+        size_t operator()(const UniformLocKey& k) const {
+            return std::hash<uint32_t>()(k.shader) ^ (std::hash<std::string>()(k.name) << 1);
+        }
+    };
+    std::unordered_map<UniformLocKey, GLint, UniformLocHash> uniform_cache;
+    GLint get_uniform_loc(uint32_t shader, const char* name);
     void set_mat4(uint32_t shader, const char* name, const mat4& m);
     void set_mat3(uint32_t shader, const char* name, const mat3& m);
     void set_vec3(uint32_t shader, const char* name, const vec3& v);

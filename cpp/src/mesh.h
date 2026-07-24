@@ -90,6 +90,9 @@ public:
 private:
     std::vector<float> cached_vertex_data;
     std::vector<uint32_t> cached_index_data;
+    mutable vec3 cached_bb_min{0.0f};
+    mutable vec3 cached_bb_max{0.0f};
+    mutable bool bb_dirty = true;
     void rebuild_cache();
 };
 

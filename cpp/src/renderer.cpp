@@ -284,28 +284,37 @@ uint32_t Renderer::compile_shader(const char* vs_src, const char* fs_src) {
 
 void Renderer::use_shader(uint32_t s) { if (s) glUseProgram(s); }
 
+GLint Renderer::get_uniform_loc(uint32_t shader, const char* name) {
+    UniformLocKey key{shader, name};
+    auto it = uniform_cache.find(key);
+    if (it != uniform_cache.end()) return it->second;
+    GLint loc = glGetUniformLocation(shader, name);
+    uniform_cache[key] = loc;
+    return loc;
+}
+
 void Renderer::set_mat4(uint32_t s, const char* n, const mat4& m) {
-    GLint loc = glGetUniformLocation(s, n);
+    GLint loc = get_uniform_loc(s, n);
     if (loc >= 0) glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(m));
 }
 void Renderer::set_mat3(uint32_t s, const char* n, const mat3& m) {
-    GLint loc = glGetUniformLocation(s, n);
+    GLint loc = get_uniform_loc(s, n);
     if (loc >= 0) glUniformMatrix3fv(loc, 1, GL_FALSE, glm::value_ptr(m));
 }
 void Renderer::set_vec3(uint32_t s, const char* n, const vec3& v) {
-    GLint loc = glGetUniformLocation(s, n);
+    GLint loc = get_uniform_loc(s, n);
     if (loc >= 0) glUniform3fv(loc, 1, glm::value_ptr(v));
 }
 void Renderer::set_vec4(uint32_t s, const char* n, const vec4& v) {
-    GLint loc = glGetUniformLocation(s, n);
+    GLint loc = get_uniform_loc(s, n);
     if (loc >= 0) glUniform4fv(loc, 1, glm::value_ptr(v));
 }
 void Renderer::set_float(uint32_t s, const char* n, float v) {
-    GLint loc = glGetUniformLocation(s, n);
+    GLint loc = get_uniform_loc(s, n);
     if (loc >= 0) glUniform1f(loc, v);
 }
 void Renderer::set_int(uint32_t s, const char* n, int v) {
-    GLint loc = glGetUniformLocation(s, n);
+    GLint loc = get_uniform_loc(s, n);
     if (loc >= 0) glUniform1i(loc, v);
 }
 
