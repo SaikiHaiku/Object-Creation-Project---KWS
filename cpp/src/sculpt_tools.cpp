@@ -13,12 +13,6 @@ static float compute_falloff(float dist, float radius, float focal) {
     return std::pow(t, 1.0f + focal * 3.0f);
 }
 
-static void apply_symmetry(vec3& pos, const BrushSettings& settings) {
-    if (settings.use_symmetry_x) pos.x = -pos.x;
-    if (settings.use_symmetry_y) pos.y = -pos.y;
-    if (settings.use_symmetry_z) pos.z = -pos.z;
-}
-
 static void mirror_pos(vec3& pos, const BrushSettings& settings, bool back) {
     vec3 m = pos;
     if (settings.use_symmetry_x) m.x = -m.x;
